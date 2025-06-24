@@ -6,6 +6,7 @@ import json
 import csv
 from datetime import datetime
 from tzlocal import get_localzone
+import threading
 
 
 from collections import Counter, defaultdict
@@ -52,6 +53,7 @@ class EfficacyTracker:
         self.verbose = args.verbose if args else False
         self.debug = args.debug if args else False
         self.track_tp_and_tn_cases = keep_tp_and_tn_tests 
+        self._lock = threading.Lock()
         # Overall counts
         self.tp_count = 0
         self.fp_count = 0
@@ -102,17 +104,18 @@ class EfficacyTracker:
         This is used to track test cases where no detection was expected 
         for the given detector, but detection was seen.
         """
-        if test not in self.false_positives:
-            self.false_positives.append(
-                EfficacyTracker.FailedTestCase(
-                    test,
-                    expected_label=expected_label,
-                    detector_seen=detector_seen
+        with self._lock:
+            if test not in self.false_positives:
+                self.false_positives.append(
+                    EfficacyTracker.FailedTestCase(
+                        test,
+                        expected_label=expected_label,
+                        detector_seen=detector_seen
+                    )
                 )
-            )
-        self.fp_count += 1
-        self.per_detector_fp[detector_seen] += 1
-        self.label_stats[detector_seen]["FP"] += 1
+            self.fp_count += 1
+            self.per_detector_fp[detector_seen] += 1
+            self.label_stats[detector_seen]["FP"] += 1
 
         if self.verbose:
             index = test.index if hasattr(test, 'index') else "unknown"
@@ -135,17 +138,18 @@ class EfficacyTracker:
         for expected_label and it was not seen.
         TODO: Get rid of FailedTestCase, since we've added detector_not_seen, etc. to the base TestCase class.
         """
-        if test not in self.true_negatives:
-            if self.track_tp_and_tn_cases:
-                self.true_negatives.append(
-                    EfficacyTracker.FailedTestCase(
-                        test,
-                        expected_label=expected_label,
-                        detector_not_seen=detector_not_seen
+        with self._lock:
+            if test not in self.true_negatives:
+                if self.track_tp_and_tn_cases:
+                    self.true_negatives.append(
+                        EfficacyTracker.FailedTestCase(
+                            test,
+                            expected_label=expected_label,
+                            detector_not_seen=detector_not_seen
+                        )
                     )
-                )
-        self.tn_count += 1
-        self.per_detector_tn[detector_not_seen] += 1
+            self.tn_count += 1
+            self.per_detector_tn[detector_not_seen] += 1
 
         if self.debug:
             print(f"{DARK_GREEN}TN: expected_label '{expected_label}' detected '{detector_not_seen}'")
@@ -165,17 +169,18 @@ class EfficacyTracker:
         This is used to track test cases where a detection was expected
         for detector_seen given expected_label, and it was seen.
         """
-        if test not in self.true_positives:
-            if self.track_tp_and_tn_cases:
-                self.true_positives.append(
-                    EfficacyTracker.FailedTestCase(
-                        test,
-                        expected_label=expected_label,
-                        detector_seen=detector_seen
+        with self._lock:
+            if test not in self.true_positives:
+                if self.track_tp_and_tn_cases:
+                    self.true_positives.append(
+                        EfficacyTracker.FailedTestCase(
+                            test,
+                            expected_label=expected_label,
+                            detector_seen=detector_seen
+                        )
                     )
-                )
-        self.tp_count += 1
-        self.per_detector_tp[detector_seen] += 1
+            self.tp_count += 1
+            self.per_detector_tp[detector_seen] += 1
 
         if self.debug:
             print(f"{DARK_GREEN}TP: expected_label '{expected_label}' detected '{detector_seen}'")
@@ -195,16 +200,17 @@ class EfficacyTracker:
         This is used to track test cases where a detection was expected for
         the given detector but was not seen.
         """
-        if test not in self.false_negatives:
-            self.false_negatives.append(
-                EfficacyTracker.FailedTestCase(
-                    test, 
-                    expected_label=expected_label,
-                    detector_not_seen=detector_not_seen)
-            )
-        self.fn_count += 1
-        self.per_detector_fn[detector_not_seen] += 1
-        self.label_stats[detector_not_seen]["FN"] += 1
+        with self._lock:
+            if test not in self.false_negatives:
+                self.false_negatives.append(
+                    EfficacyTracker.FailedTestCase(
+                        test, 
+                        expected_label=expected_label,
+                        detector_not_seen=detector_not_seen)
+                )
+            self.fn_count += 1
+            self.per_detector_fn[detector_not_seen] += 1
+            self.label_stats[detector_not_seen]["FN"] += 1
 
         if self.verbose:
             index = test.index if hasattr(test, 'index') else "unknown"
@@ -294,8 +300,9 @@ class EfficacyTracker:
 
         # Update label_counts
         if test and test.label:
-            for label in test.label:
-                self.label_counts[label] += 1
+            with self._lock:
+                for label in test.label:
+                    self.label_counts[label] += 1
 
         if self.debug:
             print(f"\n\nDetected detectors labels: {detected_detectors_labels}")

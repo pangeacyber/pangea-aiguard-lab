@@ -6,6 +6,7 @@ import json
 import csv
 from datetime import datetime
 from tzlocal import get_localzone
+import threading
 
 
 from collections import Counter, defaultdict
@@ -57,6 +58,7 @@ class AIGuardManager:
         service: str = defaults.ai_guard_service,
         endpoint: str = defaults.ai_guard_endpoint,
     ):
+        self._lock = threading.Lock()
         self.efficacy = EfficacyTracker(args=args)
 
         self.verbose = args.verbose
@@ -148,14 +150,17 @@ class AIGuardManager:
 
     def add_error_response(self, response):
         """ TODO: Allow error responses to be added to an output file and flushed to disk as they come in"""
-        self.efficacy.errors[response.status_code] += 1
-        self.efficacy.error_responses.append(response)
+        with self.efficacy._lock:
+            self.efficacy.errors[response.status_code] += 1
+            self.efficacy.error_responses.append(response)
 
     def add_duration(self, duration):
-        self.efficacy.duration_sum += duration
+        with self.efficacy._lock:
+            self.efficacy.duration_sum += duration
 
     def add_total_calls(self):
-        self.efficacy.total_calls += 1
+        with self.efficacy._lock:
+            self.efficacy.total_calls += 1
 
     def get_total_calls(self):
         return self.efficacy.total_calls
@@ -362,42 +367,42 @@ class AIGuardManager:
 
     def update_detected_counts(self, detected_detectors):
         # TODO: May want to replace the "prompt_injection" key with "malicious-prompt"             
-        self.detected_detectors.update(detected_detectors.keys())
-        for detector in detected_detectors.keys():
-            value = detected_detectors[detector]
-            if detector == "prompt_injection":
-                analyzers = value
-                if analyzers:
-                    for analyzer in analyzers:
-                        # Extract analyzer name and confidence if available
-                        if isinstance(analyzer, str):
-                            self.detected_analyzers[analyzer] += 1
-                        elif isinstance(analyzer, dict):
-                            analyzer_name = analyzer.get("analyzer", "Unknown")
-                            self.detected_analyzers[analyzer_name] += 1
-                        else:
-                            print(f"{DARK_RED}Unexpected format for prompt_injection: {analyzer}{RESET}")
-                    # self.detected_analyzers[analyzer] += 1
-            elif detector == "malicious_entity":
-                entities = value
-                if entities:
-                    for entity in entities:
-                        self.detected_malicious_entities[entity] += 1
-            elif detector == "topic":
-                topics = value
-                if topics:
-                    for topic in topics:                        
-                        self.detected_topics[topic] += 1
-            elif detector == "language_detection":
-                languages = detected_detectors[detector]
-                if languages:
-                    for language in languages:
-                        self.detected_languages[language] += 1
-            elif detector == "code_detection":
-                languages = detected_detectors[detector]
-                if languages:
-                    for language in languages:
-                        self.detected_code_languages[language] += 1
+        with self._lock:
+            self.detected_detectors.update(detected_detectors.keys())
+            for detector in detected_detectors.keys():
+                value = detected_detectors[detector]
+                if detector == "prompt_injection":
+                    analyzers = value
+                    if analyzers:
+                        for analyzer in analyzers:
+                            # Extract analyzer name and confidence if available
+                            if isinstance(analyzer, str):
+                                self.detected_analyzers[analyzer] += 1
+                            elif isinstance(analyzer, dict):
+                                analyzer_name = analyzer.get("analyzer", "Unknown")
+                                self.detected_analyzers[analyzer_name] += 1
+                            else:
+                                print(f"{DARK_RED}Unexpected format for prompt_injection: {analyzer}{RESET}")
+                elif detector == "malicious_entity":
+                    entities = value
+                    if entities:
+                        for entity in entities:
+                            self.detected_malicious_entities[entity] += 1
+                elif detector == "topic":
+                    topics = value
+                    if topics:
+                        for topic in topics:                        
+                            self.detected_topics[topic] += 1
+                elif detector == "language_detection":
+                    languages = detected_detectors[detector]
+                    if languages:
+                        for language in languages:
+                            self.detected_languages[language] += 1
+                elif detector == "code_detection":
+                    languages = detected_detectors[detector]
+                    if languages:
+                        for language in languages:
+                            self.detected_code_languages[language] += 1
 
     def update_test_labels(self, test: TestCase, label: str):
         """
