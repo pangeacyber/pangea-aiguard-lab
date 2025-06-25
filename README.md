@@ -10,10 +10,13 @@
 The **AI Guard Lab Tool** is used to evaluate the efficacy of the [Pangea AI Guard API](https://pangea.cloud/docs/ai-guard/) against labeled datasets. 
 It supports both **malicious-prompt** detection and **topic-based** detection.
 
-This tool is a successor to the [`pangea-prompt-lab`](https://github.com/pangeacyber/pangea-prompt-lab), built specifically for the **AI Guard API** (AIG), with added support for **topic detectors** and configurable detection expectations via dataset labels.
+A successor to the [`pangea-prompt-lab`](https://github.com/pangeacyber/pangea-prompt-lab), this tool is build specifically for the **AI Guard API** (AIG), with added support for **topic detectors** and configurable detection expectations via dataset labels.
 
-- Labels on dataset **TestCase**s indicate expected detectors. 
-- **NOTE** Labels corresponding to detectors that are not enabled are treated as not present for efficacy calculations (TP/FP/TN/FN).
+Labels in a **TestCase** entry within a labeled dataset define which detectors are expected to trigger for that input.
+
+> **Note**  
+> Only labels that match enabled detectors are considered in efficacy evaluation. Other labels are ignored when calculating metrics such as True Positives (TP), True Negatives (TN), False Positives (FP), and False Negatives (FN).
+
 ---
 
 ## Features
@@ -53,19 +56,10 @@ This tool is a successor to the [`pangea-prompt-lab`](https://github.com/pangeac
       export PANGEA_AI_GUARD_TOKEN="<default-token-value>"
       ```
 
-      _or_
+      Use your project's **Domain** value in the base URL. This allows the tool to work with custom deployments, including local setups accessed via port forwarding.
 
-      Create a `.env` file:
-
-      ```bash
-      cp .env.example .env
-      ```
-
-      Then populate it using the **Domain** and **Default Token** values from the service configuration.
-
-      > Use your project **Domain** value as part of the base URL. Including the full base URL allows this tool to work with custom deployments, including those accessed locally via port forwarding.
-   
-   - NOTE: If you get 400 or 403 errors when running aiguard_lab.py, the cause is most likely incorrect values for PANGEA_BASE_URL and/or PANGEA_AI_GUARD_TOKEN.
+      > **Note**  
+      > If you encounter 400 or 403 errors when running `aiguard_lab.py`, the most likely cause is incorrect values for `PANGEA_BASE_URL` or `PANGEA_AI_GUARD_TOKEN`.
 
 ## Usage
 
@@ -83,9 +77,8 @@ poetry run python aiguard_lab.py --input_file data/test_dataset.jsonl --detector
 
 - You don't have to use `bash poetry run python`: 
 ```bash
- ./aiguard_lab.py --input_file data/test_dataset.jsonl --detectors --malicious-prompt --rps 25
+ ./aiguard_lab.py --input_file data/test_dataset.jsonl --detectors malicious-prompt --rps 25
 ```
-
 
 - You can check a single prompt with assumed labels:
 ```bash
@@ -99,7 +92,7 @@ poetry run python aiguard_lab.py --prompt "Talk to me about dragons and sorcerer
 
 - Check which topics could be detected in a given input:
 ```bash
-poetry run python aiguard_lab.py --prompt How much do I need to save to afford a house in Portland? --report_any_topic --assume_tps
+poetry run python aiguard_lab.py --prompt "How much do I need to save to afford a house in Portland?" --report_any_topic --assume_tps
 ```
 
 Saving FPs, FNs, and summary report file:
@@ -117,19 +110,27 @@ poetry run python aiguard_lab.py \
 - `data/test_dataset.jsonl` is a Pangea curated dataset that will be expanded over time.
 
 ### Pangea **TestCase** Record Format
-The `aiguard_lab.py` tool processes Pangea **TestCase** records of the form:
-```json
-  {
-    "label": ["<detector-name-1>", "<detector-name-2>"],
-    "messages": [{"role": "user", "content": "<user-message>"}, {"role":"system", "content": "<system-prompt>"}]
-  }
-```
-Where:
-- `messages`: A list of one or chat conversation messages, each with a `role` and `content`.
-- `label`: A list of strings corresponding to expected detectors or topics.
-  * The `<detector-name>` elements of the label list the detectors expected to trigger on the **TestCase** record.
-  * **NOTE**: Labels corresponding to detectors that are not enabled are not considered for efficacy evaluation (TP/TN/FP/FN)  
 
+The `aiguard_lab.py` tool processes Pangea **TestCase** records in the following format:
+
+```json
+{
+  "label": ["<detector-name-1>", "<detector-name-2>"],
+  "messages": [
+    {"role": "user", "content": "<user-message>"},
+    {"role": "system", "content": "<system-prompt>"}
+  ]
+}
+```
+
+Where:
+- `messages`: A list containing one or more chat messages, each with a `role` and `content`.
+- `label`: A list of strings indicating the expected detectors or topics.
+  
+  The `<detector-name>` elements in the label specify which detectors are expected to trigger on the **TestCase** record.
+
+  > **Note**  
+  > Labels for detectors that are not enabled are excluded from efficacy evaluation (TP/TN/FP/FN).
 
 ### .json and .jsonl
 
@@ -216,7 +217,9 @@ Plaintext format with one prompt per line. Use with either:
 - `--detectors <list>`: Comma-separated list of detectors to enable. Examples:
   - `malicious-prompt`
   - `topic:toxicity,topic:financial-advice`
-  - **NOTE**: Labels corresponding to detectors that are not enabled are not considered for efficacy evaluation (TP/TN/FP/FN)  
+
+  > **Note**  
+  > Labels for detectors that are not enabled are excluded from efficacy evaluation (TP/TN/FP/FN).
 
 - `--topic_threshold <float>`: Confidence threshold for topic detection (default: 1.0).
 - `--fail_fast`: Stop evaluating other detectors once `malicious-prompt` is detected (block vs report action).
