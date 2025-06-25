@@ -246,7 +246,18 @@ def main():
         help="When passing JSON file, only check for false negatives",
         default=False,
     )
-
+    temp_fix_group = parser.add_argument_group("Temporary fixes during AI Guard API changes")
+    temp_fix_group.add_argument(
+        "--hyphen_hack",
+        action="store_true",
+        help=(
+            "Temporary fix for AI Guard API changes that may cause issues.\n"
+            "This is a temporary workaround and should be removed once the API\n"
+            "stabilizes. Default: False."
+        ),
+        default=False,
+    )
+    
     args = parser.parse_args()
 
     recipe = args.recipe

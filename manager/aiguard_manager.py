@@ -59,8 +59,11 @@ class AIGuardManager:
         endpoint: str = defaults.ai_guard_endpoint,
     ):
         self._lock = threading.Lock()
-        self.efficacy = EfficacyTracker(args=args)
 
+        ## TODO: Temp fix until "self harm and violence" is updated to by hyphenated in the API.
+        self.hyphen_hack = args.hyphen_hack
+
+        self.efficacy = EfficacyTracker(args=args)
         self.verbose = args.verbose
         self.debug = args.debug
         self.max_poll_attempts = args.max_poll_attempts
@@ -424,9 +427,10 @@ class AIGuardManager:
             print(f"\tCurrent test labels: {test.label}")
 
         if label == "self-harm-and-violence":
-            # TODO: TEMP FIX UNTIL API IS UPDATED:
-            # Replace self-harm-and-violence with self harm and violence
-            label = label.replace("-", " ")
+            if self.hyphen_hack:
+                # TODO: TEMP FIX UNTIL API IS UPDATED:
+                # Replace self-harm-and-violence with self harm and violence
+                label = label.replace("-", " ")
         # Ensure the label is in the correct format for topics
         if label in self.valid_topics:
             # Normalize the topic name to "topic:<topic-name>" format
@@ -506,9 +510,10 @@ class AIGuardManager:
                         for topic in topics:
                             topic_name = topic.get("topic")
                             if topic_name:
-                                # TODO: Temporarily allow both "self harm and violence" and "self-harm-and-violence"
-                                if topic_name == "self harm and violence":
-                                    topic_name = "self-harm-and-violence"
+                                if self.hyphen_hack:
+                                    # TODO: Temporarily allow both "self harm and violence" and "self-harm-and-violence"
+                                    if topic_name == "self harm and violence":
+                                        topic_name = "self-harm-and-violence"
                                 if topic_name in self.valid_topics:
                                     # Normalize topic name to "topic:<topic-name>" format
                                     topic_name = f"{defaults.topic_prefix}{topic_name}"
@@ -571,6 +576,9 @@ class AIGuardManager:
 
         if self.verbose:
             print(f"\tSummary: {summary}{RESET}")
+        if self.debug:
+            print(f"\tResponse.status_code: {response.status_code}")
+            print(f"\tResponse: {formatted_json_str(response.json())}{RESET}")
 
         # Extract info on detected detectors and their sub-details
         # This will return a list of dictionaries with the detector name and its details.
@@ -583,7 +591,7 @@ class AIGuardManager:
         #     {"detector": "topic", "details": {"detected": True, "data": {"topics": [{"topic": "negative-sentiment", "confidence": 1.0}]}}}]
         # ]
         detected_detectors = self.get_detected_with_detail(response.json())
-        # Also grab the raw detectors dict from the API response for label extraction
+        # Also grab the raw detectors dict from the API response for label extraction        
         raw_detectors = response.json().get("result", {}).get("detectors", {})
         if self.debug:
             print(f"\t{DARK_YELLOW}Detected Detectors: {formatted_json_str(detected_detectors)}{RESET}")
@@ -734,9 +742,10 @@ class AIGuardManager:
         ## TODO: TEMP: If the topic name is "self-harm-and-violence"
         ## We need to replace it with "self harm and violence" for now.
         ## This is a temporary fix until the API is updated to handle the topic name correctly.
-        if "self-harm-and-violence" in enabled_topics:
-            enabled_topics.remove("self-harm-and-violence")
-            enabled_topics.append("self harm and violence")
+        if self.hyphen_hack:
+            if "self-harm-and-violence" in enabled_topics:
+                enabled_topics.remove("self-harm-and-violence")
+                enabled_topics.append("self harm and violence")
 
         data = {"recipe": test.get_recipe(), "messages": test.messages, "debug": self.debug}
 
