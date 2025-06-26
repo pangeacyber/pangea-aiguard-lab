@@ -616,10 +616,12 @@ class AIGuardManager:
             )
         )
 
-        if fp_detected or fn_detected:            
+        if fp_detected or fn_detected:
             index = test.index if hasattr(test, "index") else "N/A"
-            if fp_detected:
-                print(f"\t{DARK_RED}Test:{index}:False Positives: {fp_names}{RESET}")
+            # Only print FPs if no true positives (no intersection between expected and actual labels)
+            if not set(expected_detectors_labels).intersection(set(actual_detectors_labels)):
+                if fp_detected:
+                    print(f"\t{DARK_RED}Test:{index}:False Positives: {fp_names}{RESET}")
             if fn_detected:
                 print(f"\t{DARK_RED}Test:{index}:False Negatives: {fn_names}{RESET}")
             print(f"\t{DARK_YELLOW}Actual Detections: {actual_detectors_labels} Expected:{expected_detectors_labels}{RESET}")

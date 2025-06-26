@@ -365,21 +365,19 @@ class EfficacyTracker:
                     detector_not_seen=expected,
                     expected_label=expected
                 )
-        for detected in detected_detectors_labels:
-            if detected not in expected_labels:
-                # If the detected detector is not in the expected labels, it's a False Positive
-                if self.debug:
-                    print(f"{DARK_YELLOW}Checking for detected detector '{detected}' in expected_labels...{RESET}")  
-                    print(f"{DARK_RED}FP: Detected detector '{detected}' not expected in {expected_labels}{RESET}")
-
-                fp_detected = True
-                found_fp.add(detected)
-
-                self.add_false_positive(
-                    test,
-                    expected_label="benign",
-                    detector_seen=detected
-                )
+        # New logic: only consider it a false positive if *none* of the expected labels were detected
+        if not found_tp:
+            for detected in detected_detectors_labels:
+                if detected not in expected_labels:
+                    if self.debug:
+                        print(f"{DARK_YELLOW}Detected label '{detected}' not in expected_labels and no TP found. Marking as FP.{RESET}")
+                    fp_detected = True
+                    found_fp.add(detected)
+                    self.add_false_positive(
+                        test,
+                        expected_label="benign",
+                        detector_seen=detected
+                    )
         # No need to check for FN here, as we already checked expected_labels
         # against detected_detectors_labels
         
