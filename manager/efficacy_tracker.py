@@ -366,6 +366,23 @@ class EfficacyTracker:
                     expected_label=expected
                 )
 
+        unexpected = next(iter(detected_detectors_labels), None)
+        if not expected_labels and unexpected:  # benign + at least one detector fired
+            if self.debug:
+                print(
+                    f"{DARK_YELLOW}Benign case: first unexpected detection "
+                    f"'{unexpected}' – counting 1 FP for this test‑case.{RESET}"
+                )
+            fp_detected = True
+            found_fp.add(unexpected)
+            self.add_false_positive(
+                test,
+                expected_label="benign",
+                detector_seen=unexpected
+            )
+
+        # else: expected_labels not empty  →  extras are ignored
+
         # Update case-level counts: record both false positives and false
         # negatives if present
         if found_fp:
