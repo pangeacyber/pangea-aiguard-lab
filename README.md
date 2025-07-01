@@ -228,6 +228,8 @@ The **TestCase**.label input field lists the names of expected detectors for a *
 - `--benign_labels ` specifies a list of label values to be considered synonyms for `benign`
 - `--assume_tps`: All input is to be considered a true positive (as if **TestCase**.label matches all enabled detectors)
 - `--assume_tns`: All input is to be conidered a true negative (as if **TestCase**.label is empty or contains `benign`)
+- `--negative_labels <list>` specifies detector-specific **negative** examples. Use the pattern `not-topic:<topic-name>` (e.g. `not-topic:legal-advice`).  
+  Default: `not-topic:*`. Test cases with these labels expect **no** detections from the corresponding detector (they count as FPs if one occurs). Make sure these do **not** overlap with the detector’s positive label.
 
 ### Output and Reporting
 

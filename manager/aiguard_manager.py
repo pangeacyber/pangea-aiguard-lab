@@ -1011,6 +1011,17 @@ class AIGuardTests:
                 # Use TestCase::ensure_valid_labels(effective_enabled_detectors) to ensure that the labels
                 # are valid and only those that are for enabled and supported detectors.
                 testcase.ensure_valid_labels(effective_enabled_detectors)
+                # ------------------------------------------------------------------
+                # Preserve explicit negative‑expectation labels (e.g.  "not‑topic:*").
+                # These get stripped out by ensure_valid_labels() because they aren’t
+                # themselves valid detectors, but the efficacy calculator needs them
+                # so it can score true‑negatives / false‑positives correctly.
+                # Re‑add any label that begins with "not-" and wasn’t kept above.
+                # ------------------------------------------------------------------
+                original_raw_labels = test_data.get("label") or []
+                for lbl in original_raw_labels:
+                    if lbl.startswith("not-") and lbl not in testcase.label:
+                        testcase.label.append(lbl)
                 testcase.index = len(self.tests) + 1  # Set index based on current length of tests
 
             self.tests.append(testcase)
