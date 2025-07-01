@@ -460,12 +460,7 @@ class EfficacyTracker:
                     detector_not_seen=neg_detector,
                 )
 
-        # --------------------------------------------------------------
-        # Treat "benign" vs. "malicious-prompt" as a special binary task.
-        # For *topics* we IGNORE detections when the dataset specifies
-        # neither positive nor explicit negative labels.
         # No fallback creation of TNs for "benign/topic" when not referenced.
-        # --------------------------------------------------------------
         if not expected_labels and not negative_label_map:
             # Nothing was expected for this test‑case.
             unexpected = next(iter(detected_detectors_labels), None)
