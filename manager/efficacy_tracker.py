@@ -227,6 +227,7 @@ class EfficacyTracker:
             detected_detectors_labels: List[str],
             benign_labels: List[str] = defaults.benign_labels,
             malicious_prompt_labels: List[str] = defaults.malicious_prompt_labels,
+            negative_labels: List[str] | None = None,
             ):
         """
         Update efficacy statistics by comparing expected and actual detector results.
@@ -240,7 +241,7 @@ class EfficacyTracker:
             Failure to see a detection matching that label is a FN
             Seeing a detection that doesn’t match a label on the test case is a FP
 
-        Logic: 
+        Logic:
             detected_detectors_labels = AIG(test)
             Expected_labels = test.labels
             Expected_labels = apply_synonyms(test.labels, malicious_prompt_labels)
@@ -253,10 +254,38 @@ class EfficacyTracker:
                 If not detected in expected_labels:
                     FP(detected)
 
-        How do benign_labels come in?  
+        How do benign_labels come in?
             They should have been removed if seen - benign means no detection expected.
 
         """
+        # ------------------------------------------------------------------
+        # Topic‑level synonym map. Extend as needed when new aliases appear.
+        # Example: the detector is named `topic:legal-advice`, but datasets
+        # may use the shorter label `topic:legal`.  Likewise for negatives.
+        # ------------------------------------------------------------------
+        topic_synonyms: dict[str, str] = {
+            # full‑prefix forms
+            "topic:legal": "topic:legal-advice",
+            "not-topic:legal": "not-topic:legal-advice",
+            # bare forms (datasets sometimes omit the 'topic:' prefix)
+            "legal": "legal-advice",
+            "not-legal": "not-topic:legal-advice",
+        }
+
+        def _canon(label: str) -> str:
+            """Return a canonical detector/topic name for comparison.
+
+            Strips the optional 'topic:' prefix from positives and negatives.
+            e.g. 'topic:legal-advice' -> 'legal-advice'
+                 'not-topic:legal-advice' -> 'not-topic:legal-advice'  (negatives kept)
+            """
+            if label.startswith("topic:"):
+                return label.split("topic:", 1)[1]  # drop prefix
+            return label
+        # Default negative_labels if none passed
+        if negative_labels is None:
+            negative_labels = ["not-topic:*"]  # default pattern
+
         # Allow single-string inputs by wrapping into a list
         if isinstance(expected_labels, str):
             expected_labels = [expected_labels]
@@ -266,15 +295,70 @@ class EfficacyTracker:
 
         # Normalize inputs to lists of strings
         expected_labels = expected_labels or []
-
         detected_detectors_labels = detected_detectors_labels or []
         expected_labels = [str(label) for label in expected_labels]
-
         detected_detectors_labels = [
             str(det) for det in detected_detectors_labels
         ]
 
-        # self.total_calls += 1 # This is handled in AIGuardManager        
+        # ---------------------------------------------------------
+        # Always derive expected_labels solely from *positive* labels
+        # present in the test case itself; ignore the caller‑supplied
+        # list because upstream plumbing has proved unreliable.
+        # ---------------------------------------------------------
+        expected_labels = [
+            lbl for lbl in getattr(test, "label", []) or []
+            if isinstance(lbl, str) and not lbl.startswith("not-topic:")
+        ]
+
+        # First, apply synonyms
+        expected_labels = [topic_synonyms.get(lbl, lbl) for lbl in expected_labels]
+        detected_detectors_labels = [topic_synonyms.get(det, det) for det in detected_detectors_labels]
+
+        # Then canonicalise by stripping optional 'topic:' prefix from positives
+        expected_labels = [_canon(lbl) for lbl in expected_labels]
+        detected_detectors_labels = [_canon(det) for det in detected_detectors_labels]
+
+        # ----------------------------------------
+        # Build the negative‑label map straight from
+        # the *original* test.label list so that
+        # “not-topic:*” examples are never lost.
+        # ----------------------------------------
+        negative_label_map: dict[str, str] = {}  # detector -> neg_label
+        original_labels = getattr(test, "label", []) or []
+        for lbl in original_labels:
+            # apply synonym mapping first
+            lbl = topic_synonyms.get(lbl, lbl)
+            if isinstance(lbl, str) and lbl.startswith("not-topic:"):
+                detector_name = _canon(lbl.replace("not-", "", 1))  # e.g. 'legal-advice'
+                negative_label_map[detector_name] = lbl
+
+        # Debug – show negative label handling
+        if self.debug:
+            print(f"[DEBUG] original_labels        = {original_labels}")
+            print(f"[DEBUG] negative_label_map     = {negative_label_map}")
+            print(f"[DEBUG] detected_detectors_lbl = {detected_detectors_labels}")
+
+        # Remove any negative labels from expected_labels so
+        # they are not treated as positives further down.
+        expected_labels = [
+            lbl for lbl in expected_labels
+            if not (isinstance(lbl, str) and lbl.startswith("not-topic:"))
+        ]
+
+        # ---------------------------------------------------------
+        # Supplement expected_labels with any *positive* topic labels
+        # directly present in the original test.label list but missing
+        # (this fixes cases where upstream filtering removed them).
+        # ---------------------------------------------------------
+        for lbl in original_labels:
+            if isinstance(lbl, str) and not lbl.startswith("not-topic:"):
+                # Apply synonym + canonicalisation
+                canon_lbl = _canon(topic_synonyms.get(lbl, lbl))
+                if canon_lbl and canon_lbl not in expected_labels:
+                    expected_labels.append(canon_lbl)
+
+        # self.total_calls += 1 # This is handled in AIGuardManager
 
         # Initialize return values
         fp_detected = False
@@ -289,12 +373,11 @@ class EfficacyTracker:
         found_fn = set()
         found_tp = set()
         found_tn = set()
-        
-        # Apply synonyms to expected_labels for "malicious-prompt"
-        expected_labels = apply_synonyms(expected_labels, malicious_prompt_labels, "malicious-prompt")
 
-        # Apply synonyms to expected_labels for "benign"
-        expected_labels = apply_synonyms(expected_labels, benign_labels, "benign")
+        # Apply synonyms to expected_labels for "malicious-prompt"
+        expected_labels += apply_synonyms(expected_labels, malicious_prompt_labels, "malicious-prompt")
+        expected_labels += apply_synonyms(expected_labels, benign_labels, "benign")
+        expected_labels = list(dict.fromkeys(expected_labels))  # dedupe, order‑stable
         if "benign" in expected_labels:
             expected_labels.remove("benign")  # Remove "benign" from expected_labels
 
@@ -336,13 +419,13 @@ class EfficacyTracker:
                     break  # No need to check further benign labels
         # Since we're done checking benign labels, we can remove them from expected_labels
         expected_labels = [label for label in expected_labels if label not in benign_labels]
-            
+
         for expected in expected_labels:
             if expected in detected_detectors_labels:
                 # If the expected label is in the detected labels, it's a True Positive
                 if self.debug:
-                    print(f"{DARK_YELLOW}Checking for expected label '{expected}' in detected_detectors_labels...{RESET}")  
-                    print(f"{DARK_GREEN}TP: Expected label '{expected}' detected in {detected_detectors_labels}{RESET}")    
+                    print(f"{DARK_YELLOW}Checking for expected label '{expected}' in detected_detectors_labels...{RESET}")
+                    print(f"{DARK_GREEN}TP: Expected label '{expected}' detected in {detected_detectors_labels}{RESET}")
 
                 tp_detected = True
                 found_tp.add(expected)
@@ -354,7 +437,7 @@ class EfficacyTracker:
                 )
             else:
                 if self.debug:
-                    print(f"{DARK_YELLOW}Checking for expected label '{expected}' in detected_detectors_labels...{RESET}")  
+                    print(f"{DARK_YELLOW}Checking for expected label '{expected}' in detected_detectors_labels...{RESET}")
                     print(f"{DARK_YELLOW}FN: Expected label '{expected}' not detected in {detected_detectors_labels}{RESET}")
 
                 fn_detected = True
@@ -366,22 +449,67 @@ class EfficacyTracker:
                     expected_label=expected
                 )
 
-        unexpected = next(iter(detected_detectors_labels), None)
-        if not expected_labels and unexpected:  # benign + at least one detector fired
-            if self.debug:
-                print(
-                    f"{DARK_YELLOW}Benign case: first unexpected detection "
-                    f"'{unexpected}' – counting 1 FP for this test‑case.{RESET}"
+        # ------------------------------
+        # Evaluate negative label cases
+        # ------------------------------
+        for neg_detector, neg_label in negative_label_map.items():
+            if neg_detector in detected_detectors_labels:
+                # Detector fired when it should not → FP
+                fp_detected = True
+                found_fp.add(neg_detector)
+                self.add_false_positive(
+                    test,
+                    expected_label=neg_label,
+                    detector_seen=neg_detector,
                 )
-            fp_detected = True
-            found_fp.add(unexpected)
-            self.add_false_positive(
-                test,
-                expected_label="benign",
-                detector_seen=unexpected
-            )
+            else:
+                # Correctly silent → TN
+                tn_detected = True
+                found_tn.add(neg_detector)
+                self.add_true_negative(
+                    test,
+                    expected_label=neg_label,
+                    detector_not_seen=neg_detector,
+                )
 
+        # --------------------------------------------------------------
+        # Treat "benign" vs. "malicious-prompt" as a special binary task.
+        # For *topics* we IGNORE detections when the dataset specifies
+        # neither positive nor explicit negative labels.
+        # No fallback creation of TNs for "benign/topic" when not referenced.
+        # --------------------------------------------------------------
+        if not expected_labels and not negative_label_map:
+            # Nothing was expected for this test‑case.
+            unexpected = next(iter(detected_detectors_labels), None)
+            if unexpected == "malicious-prompt":
+                # Only malicious‑prompt counts as a FP in this benign scenario.
+                if self.debug:
+                    print(
+                        f"{DARK_YELLOW}Benign case: unexpected 'malicious-prompt' "
+                        f"– counting 1 FP for this test‑case.{RESET}"
+                    )
+                fp_detected = True
+                found_fp.add(unexpected)
+                self.add_false_positive(
+                    test,
+                    expected_label="benign",
+                    detector_seen=unexpected
+                )
         # else: expected_labels not empty  →  extras are ignored
+
+        # ---------------------------------------------------------
+        # Ignore detectors that are not referenced (positively or
+        # negatively) in the test‑case labels. No fallback TNs.
+        # ---------------------------------------------------------
+        for det in detected_detectors_labels:
+            if det in expected_labels:      # already handled as TP
+                continue
+            if det in negative_label_map:   # handled above
+                continue
+            # If we reach here:
+            #   * det is NOT expected
+            #   * det has NO explicit negative label
+            # → therefore IGNORE it (neither FP nor TN/FN)
 
         # Update case-level counts: record both false positives and false
         # negatives if present
@@ -391,17 +519,18 @@ class EfficacyTracker:
         if found_fn:
             fn_detected = True
             fn_names.extend(found_fn)
-        # If no false positives or false negatives, record a TP or TN
-        if not found_fp and not found_fn:
-            if not tp_detected:
-                # true negative: nothing expected and nothing detected
-                tn_detected = True
-                found_tn.add("benign")  # Assuming benign is the default for TN
-                self.add_true_negative(
-                    test,
-                    expected_label="benign",
-                    detector_not_seen="benign"
-                )
+
+        # ---------------------------------------------------------
+        # Make sure every detector that appears ONLY in negative
+        # labels is represented, so it shows up in per‑detector TNs.
+        # ---------------------------------------------------------
+        for neg_detector in negative_label_map.keys():
+            if neg_detector not in self.per_detector_tp \
+               and neg_detector not in self.per_detector_fp \
+               and neg_detector not in self.per_detector_fn \
+               and neg_detector not in self.per_detector_tn:
+                self.per_detector_tn[neg_detector] = 0
+
         return (fp_detected, fn_detected, fp_names, fn_names)
 
     class MetricsDict(TypedDict, total=False):
