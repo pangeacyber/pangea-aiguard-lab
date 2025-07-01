@@ -258,19 +258,7 @@ class EfficacyTracker:
             They should have been removed if seen - benign means no detection expected.
 
         """
-        # ------------------------------------------------------------------
-        # Topic‑level synonym map. Extend as needed when new aliases appear.
-        # Example: the detector is named `topic:legal-advice`, but datasets
-        # may use the shorter label `topic:legal`.  Likewise for negatives.
-        # ------------------------------------------------------------------
-        topic_synonyms: dict[str, str] = {
-            # full‑prefix forms
-            "topic:legal": "topic:legal-advice",
-            "not-topic:legal": "not-topic:legal-advice",
-            # bare forms (datasets sometimes omit the 'topic:' prefix)
-            "legal": "legal-advice",
-            "not-legal": "not-topic:legal-advice",
-        }
+        # (topic_synonyms mapping removed -- no synonym mapping applied)
 
         def _canon(label: str) -> str:
             """Return a canonical detector/topic name for comparison.
@@ -311,9 +299,9 @@ class EfficacyTracker:
             if isinstance(lbl, str) and not lbl.startswith("not-topic:")
         ]
 
-        # First, apply synonyms
-        expected_labels = [topic_synonyms.get(lbl, lbl) for lbl in expected_labels]
-        detected_detectors_labels = [topic_synonyms.get(det, det) for det in detected_detectors_labels]
+        # Keep labels as-is; no synonym mapping
+        expected_labels = expected_labels
+        detected_detectors_labels = detected_detectors_labels
 
         # Then canonicalise by stripping optional 'topic:' prefix from positives
         expected_labels = [_canon(lbl) for lbl in expected_labels]
@@ -327,8 +315,8 @@ class EfficacyTracker:
         negative_label_map: dict[str, str] = {}  # detector -> neg_label
         original_labels = getattr(test, "label", []) or []
         for lbl in original_labels:
-            # apply synonym mapping first
-            lbl = topic_synonyms.get(lbl, lbl)
+            # No synonym mapping needed
+            # lbl remains unchanged
             if isinstance(lbl, str) and lbl.startswith("not-topic:"):
                 detector_name = _canon(lbl.replace("not-", "", 1))  # e.g. 'legal-advice'
                 negative_label_map[detector_name] = lbl
@@ -353,8 +341,8 @@ class EfficacyTracker:
         # ---------------------------------------------------------
         for lbl in original_labels:
             if isinstance(lbl, str) and not lbl.startswith("not-topic:"):
-                # Apply synonym + canonicalisation
-                canon_lbl = _canon(topic_synonyms.get(lbl, lbl))
+                # Apply canonicalisation only; no synonym mapping
+                canon_lbl = _canon(lbl)
                 if canon_lbl and canon_lbl not in expected_labels:
                     expected_labels.append(canon_lbl)
 
