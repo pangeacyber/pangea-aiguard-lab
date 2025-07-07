@@ -146,6 +146,18 @@ def main():
         ),
     )
     processing_group.add_argument(
+        "--negative_labels",
+        type=str,
+        default="not-topic:*",
+        help=(
+            "Comma separated list of labels indicating negative examples for specific detectors.\n"
+            "Use the pattern 'not-topic:<topic-name>' (e.g. not-topic:legal-advice).\n"
+            "Test cases with any of these labels expect **no** detections from the corresponding "
+            "detector (FP if it does).\n"
+            "Default: not-topic:*"
+        ),
+    )
+    processing_group.add_argument(
         "--recipe",
         type=str,
         help=( 
