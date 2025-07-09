@@ -628,7 +628,7 @@ class AIGuardManager:
         # as summary info:
         # The enabled_detectors
         # The enabled_topics
-        # The detected_detectors
+        # The detected_detectors/ed
         # The detected_topics
         # The detectors for which there were non-zero efficacy values
         # These are all the things for which there is something to report, 
@@ -824,7 +824,22 @@ class AIGuardTests:
                             continue
 
                         messages = line_data.get("messages", [])
-                        labels = line_data.get("label", [])
+                        # New label extraction logic
+                        label_field = line_data.get("label")
+                        labels = []
+                        if isinstance(label_field, dict) and "kind" in label_field and "tag" in label_field:
+                            kind = label_field["kind"].strip().lower()
+                            tag = label_field["tag"].strip().lower()
+                            if kind == "topic":
+                                labels.append(f"topic:{tag}")
+                            elif kind == "nottopic":
+                                labels.append(f"not-topic:{tag}")
+                            else:
+                                labels.append(tag)
+                        elif isinstance(label_field, list):
+                            labels = label_field
+                        elif isinstance(label_field, str):
+                            labels = [label_field]
                         expected_detectors = line_data.get("expected_detectors", None)
                         if not isinstance(labels, list):
                             print(f"Warning: Invalid labels format in line {i}. Expected a list, got {type(labels)}. Skipping test case: {line_data}")
