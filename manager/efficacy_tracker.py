@@ -290,10 +290,6 @@ class EfficacyTracker:
             str(det) for det in detected_detectors_labels
         ]
 
-        # ---------------------------------------------------------
-        # Robust extraction of expected_labels from test.label,
-        # handling dict, list, and string cases.
-        # ---------------------------------------------------------
         expected_labels = []
         raw_label = getattr(test, "label", None)
 
@@ -310,10 +306,6 @@ class EfficacyTracker:
             expected_labels.append(raw_label.strip().lower())
 
         original_labels = expected_labels.copy()
-
-        print(f"[DEBUG] raw_label: {raw_label}")
-        print(f"[DEBUG] expected_labels: {expected_labels}")
-        print(f"[DEBUG] original_labels: {original_labels}")
 
         # Canonicalize expected_labels (strip 'topic:' if present)
         def _canon(label: str) -> str:
@@ -376,18 +368,27 @@ class EfficacyTracker:
                 print(f"expected_labels={expected_labels}")
                 print(f"original_labels={original_labels}")
                 print(f"detected_detectors_labels={detected_detectors_labels}")
-            for detected in detected_detectors_labels:
-                if detected == "malicious-prompt":
-                    self.add_false_positive(
-                        test,
-                        expected_label="not-malicious-prompt",
-                        detector_seen="malicious-prompt"
-                    )
+            if "malicious-prompt" in detected_detectors_labels:
+                self.add_false_positive(
+                    test,
+                    expected_label="not-malicious-prompt",
+                    detector_seen="malicious-prompt"
+                )
+            else:
+                self.add_true_negative(
+                    test,
+                    expected_label="not-malicious-prompt",
+                    detector_not_seen="malicious-prompt"
+                )
+                # Ensure TN is recorded in the per-detector stats explicitly
+                self.per_detector_tn["malicious-prompt"] += 1
+            # Remove malicious-prompt from expected to prevent double FN counting later
             expected_labels = [
                 lbl for lbl in expected_labels
                 if lbl != "malicious-prompt"
             ]
-            negative_label_map.clear()
+            # Also clear any negative label that might cause FN for malicious-prompt
+            negative_label_map.pop("malicious-prompt", None)
 
         # self.total_calls += 1 # This is handled in AIGuardManager
 
