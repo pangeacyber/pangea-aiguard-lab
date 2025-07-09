@@ -18,12 +18,12 @@ This tool is a successor to the [`pangea-prompt-lab`](https://github.com/pangeac
 
 ## Features
 
-- 🔍 Evaluate **malicious-prompt** and **topic-based** detectors.
-- 📑 Accepts labeled datasets in JSONL format with simple "label" expectations.
-- ⚙️ Configurable detector set via `--detectors` parameter.
-- 📉 Reports precision, recall, false positives/negatives, and other metrics.
-- 🧪 Supports block/report mode with `--fail-fast`.
-- 💬 Customizable label expectations via CLI flags.
+- Evaluate **malicious-prompt** and **topic-based** detectors.
+- Accepts labeled datasets in JSONL format with simple "label" expectations.
+- Configurable detector set via `--detectors` parameter.
+- Reports precision, recall, false positives/negatives, and other metrics.
+- Supports block/report mode with `--fail-fast`.
+- Customizable label expectations via CLI flags.
 ---
 
 ## Prerequisites
@@ -185,7 +185,7 @@ An example feature is that you set a default system prompt in "settings" : { "sy
 so that it applies to all of the TestCase records that lack one 
 (A **TestCase** "role": "system", "content": "..." will take precedence over the global setting).  
 
-An example of arrangement 3 with settings would be (see also `data/examples/settings_with_overrides.tests.array`):
+An example of arrangement 2 with settings would be (see also `data/examples/settings_with_overrides.tests.array`):
 ```json
 { "settings": Settings,
   "tests": [
@@ -253,10 +253,9 @@ The sample dataset (`data/test_dataset.jsonl`) contains:
 
 ## CMD Line Help
 ```
-usage: aiguard_lab.py [-h] (--prompt PROMPT | --input_file INPUT_FILE) [--system_prompt SYSTEM_PROMPT] [--force_system_prompt] [--detectors DETECTORS] [--report_any_topic] [--topic_threshold TOPIC_THRESHOLD]
-                      [--fail_fast] [--malicious_prompt_labels MALICIOUS_PROMPT_LABELS] [--benign_labels BENIGN_LABELS] [--recipe RECIPE] [--report_title REPORT_TITLE] [--summary_report_file SUMMARY_REPORT_FILE]
-                      [--fps_out_csv FPS_OUT_CSV] [--fns_out_csv FNS_OUT_CSV] [--print_label_stats] [--print_fps] [--print_fns] [--verbose] [--debug] [--assume_tps | --assume_tns] [--rps RPS]
-                      [--max_poll_attempts MAX_POLL_ATTEMPTS] [--fp_check_only]
+usage: aiguard_lab.py [-h] (--prompt PROMPT | --input_file INPUT_FILE) [--system_prompt SYSTEM_PROMPT] [--force_system_prompt] [--detectors DETECTORS] [--report_any_topic] [--topic_threshold TOPIC_THRESHOLD] [--fail_fast] [--malicious_prompt_labels MALICIOUS_PROMPT_LABELS]
+                      [--benign_labels BENIGN_LABELS] [--negative_labels NEGATIVE_LABELS] [--recipe RECIPE] [--report_title REPORT_TITLE] [--summary_report_file SUMMARY_REPORT_FILE] [--fps_out_csv FPS_OUT_CSV] [--fns_out_csv FNS_OUT_CSV] [--print_label_stats] [--print_fps]
+                      [--print_fns] [--verbose] [--debug] [--assume_tps | --assume_tns] [--rps RPS] [--max_poll_attempts MAX_POLL_ATTEMPTS] [--fp_check_only]
 
 Process prompts with AI Guard API.
 Specify a --prompt or --input_file
@@ -351,6 +350,11 @@ Detection and evaluation configuration:
                         Test cases with any of these labels expect no detections
                         from any detector (FP if it does).
                         Must not overlap with --malicious_prompt_labels.
+  --negative_labels NEGATIVE_LABELS
+                        Comma separated list of labels indicating negative examples for specific detectors.
+                        Use the pattern 'not-topic:<topic-name>' (e.g. not-topic:legal-advice).
+                        Test cases with any of these labels expect **no** detections from the corresponding detector (FP if it does).
+                        Default: not-topic:*
   --recipe RECIPE       The recipe to use for processing the prompt.
                         Useful when using --prompt for a single prompt.
                         Available recipes:
@@ -398,12 +402,13 @@ Performance:
 
 ```
 AIGuard Efficacy Report
-Report generated at: 2025-06-22 13:13:05 PDT (UTC-0700)
+Report generated at: 2025-07-09 08:32:16 PDT (UTC-0700)
 CMD: ./aiguard_lab.py --input_file data/test_dataset.jsonl --rps 25
 Input dataset: data/test_dataset.jsonl
 Service: ai-guard
 Total Calls: 900
-Requests per second: 80
+Requests per second: 25
+Average duration: 1.0192 seconds
 
 Errors: Counter()
 
@@ -420,9 +425,6 @@ F1 Score: 0.9786
 Specificity: 1.0000
 False Positive Rate: 0.0000
 False Negative Rate: 0.0420
-
-Average duration: 0.1050 seconds
-Total calls: 900
 
 -- Info on Test Cases Saved for Reporting --
 NOTE: These are the test cases that had non-zero FP/FN/TP/TN stats.

@@ -708,6 +708,7 @@ class EfficacyTracker:
             writeln(f"Service: {defaults.ai_guard_service}")
             writeln(f"Total Calls: {self.total_calls}")
             writeln(f"Requests per second: {self.args.rps}")
+            writeln(f"Average duration: {metrics['overall']['avg_duration']:.4f} seconds")
             writeln(f"\n{RED}Errors: {self.errors}{RESET}")
 
             for detector, det_metrics in metrics.items():
@@ -739,8 +740,6 @@ class EfficacyTracker:
                 writeln(f"False Positive Rate: {DARK_RED}{det_metrics['fp_rate']:.4f}{RESET}")
                 writeln(f"False Negative Rate: {DARK_RED}{det_metrics['fn_rate']:.4f}{RESET}")
                 if detector == "overall":
-                    writeln(f"\nAverage duration: {det_metrics['avg_duration']:.4f} seconds")
-                    writeln(f"Total calls: {det_metrics['total_calls']}")
                     writeln(f"\n{GREEN}-- Info on Test Cases Saved for Reporting {RESET}--")
                     writeln(f"NOTE: These are the test cases that had non-zero FP/FN/TP/TN stats.")
                     writeln(f"NOTE: TP and TN cases not saved unless track_tp_and_tn_cases is True.")
