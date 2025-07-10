@@ -301,9 +301,6 @@ class EfficacyTracker:
         # The original_labels are kept for negative label processing before canonicalization.
         expected_labels = []
         raw_label = getattr(test, "label", None)
-        print(123)
-        print(raw_label)
-        print(test)
         if isinstance(raw_label, dict):
             kind = raw_label.get("kind", "").strip().lower()
             tag = raw_label.get("tag", "").strip().lower()
