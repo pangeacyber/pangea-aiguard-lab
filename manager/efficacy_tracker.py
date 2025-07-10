@@ -295,7 +295,7 @@ class EfficacyTracker:
 
         # Extract expected labels directly from the test case label field.
         # Supports multiple formats:
-        # - If label is a dict: handle 'NotTopic' and 'NotMaliciousPrompt' cases with special logic.
+        # - If label is a dict: handle 'not-topic' and 'not-nalicious-prompt' cases with special logic.
         # - If label is a list: treat each list item as a label.
         # - If label is a simple string: treat it as a single label.
         # The original_labels are kept for negative label processing before canonicalization.
@@ -305,7 +305,7 @@ class EfficacyTracker:
             kind = raw_label.get("kind", "").strip().lower()
             tag = raw_label.get("tag", "").strip().lower()
 
-            if kind == "nottopic" and tag:
+            if kind == "not-topic" and tag:
                 expected_labels.append(f"not-topic:{tag}")
             elif kind == "notmaliciousprompt" and tag:
                 expected_labels.append(kind)

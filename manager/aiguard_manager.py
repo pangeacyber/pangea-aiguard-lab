@@ -837,7 +837,7 @@ class AIGuardTests:
 
                             if kind == "topic":
                                 labels.append(f"topic:{tag}")
-                            elif kind == "nottopic":
+                            elif kind == "not-topic":
                                 labels.append(f"not-topic:{tag}")
                             elif kind in ["notmaliciousprompt", "not-malicious-prompt"]:
                                 # Negative expectation for the malicious-prompt detector.
