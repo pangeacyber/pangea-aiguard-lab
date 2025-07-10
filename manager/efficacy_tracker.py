@@ -103,25 +103,28 @@ class EfficacyTracker:
         Add a test case to the false positives collection.
         This is used to track test cases where no detection was expected 
         for the given detector, but detection was seen.
-        Ensures detector_seen is always stored as a string.
         """
-        detector_seen_str = str(detector_seen)
         with self._lock:
-            if not any(fp.test == test and fp.detector_seen == detector_seen_str for fp in self.false_positives):
+            duplicate = any(
+                fp.test == test and fp.detector_seen == detector_seen
+                for fp in self.false_positives
+            )
+            if not duplicate:
                 self.false_positives.append(
                     EfficacyTracker.FailedTestCase(
                         test,
                         expected_label=expected_label,
-                        detector_seen=detector_seen_str
+                        detector_seen=detector_seen
                     )
                 )
-            self.fp_count += 1
-            self.per_detector_fp[detector_seen_str] += 1
-            self.label_stats[detector_seen_str]["FP"] += 1
+                # Increment counts only for a truly new FP
+                self.fp_count += 1
+                self.per_detector_fp[detector_seen] += 1
+                self.label_stats[detector_seen]["FP"] += 1
 
         if self.verbose:
             index = test.index if hasattr(test, 'index') else "unknown"
-            print(f"{DARK_RED}Test:{index}:FP: expected_label '{expected_label}' but detected '{detector_seen_str}'")
+            print(f"{DARK_RED}Test:{index}:FP: expected_label '{expected_label}' but detected '{detector_seen}'")
             print(
                 f"\t{DARK_YELLOW}Messages:\n"
                 f"{DARK_RED}{formatted_json_str(test.messages[:3])}{RESET}"
@@ -290,16 +293,31 @@ class EfficacyTracker:
             str(det) for det in detected_detectors_labels
         ]
 
+        # Extract expected labels directly from the test case label field.
+        # Supports multiple formats:
+        # - If label is a dict: handle 'NotTopic' and 'NotMaliciousPrompt' cases with special logic.
+        # - If label is a list: treat each list item as a label.
+        # - If label is a simple string: treat it as a single label.
+        # The original_labels are kept for negative label processing before canonicalization.
         expected_labels = []
         raw_label = getattr(test, "label", None)
-
+        print(123)
+        print(raw_label)
+        print(test)
         if isinstance(raw_label, dict):
             kind = raw_label.get("kind", "").strip().lower()
             tag = raw_label.get("tag", "").strip().lower()
-            if kind:
+
+            if kind == "nottopic" and tag:
+                expected_labels.append(f"not-topic:{tag}")
+            elif kind == "notmaliciousprompt" and tag:
                 expected_labels.append(kind)
-            if tag:
                 expected_labels.append(tag)
+            else:
+                if kind:
+                    expected_labels.append(kind)
+                if tag:
+                    expected_labels.append(tag)
         elif isinstance(raw_label, list):
             expected_labels.extend(str(lbl).strip().lower() for lbl in raw_label)
         elif isinstance(raw_label, str):
@@ -313,6 +331,10 @@ class EfficacyTracker:
                 return label.split("topic:", 1)[1]
             return label
         expected_labels = [_canon(lbl) for lbl in expected_labels]
+
+        # Canonicalize detected labels as well (strip 'topic:' if present)
+        original_detected_labels = detected_detectors_labels.copy()  # keep for debug / reporting
+        detected_detectors_labels = [_canon(lbl) for lbl in detected_detectors_labels]
 
         # Build negative_label_map from original_labels (before canonicalization)
         negative_label_map: dict[str, str] = {}
@@ -348,7 +370,36 @@ class EfficacyTracker:
                 explicit_benign = True
             if lbl.lower() in ["notmaliciousprompt", "not-malicious-prompt"]:
                 explicit_not_mal_prompt = True
-        if explicit_benign:
+        if explicit_not_mal_prompt:
+            if self.debug:
+                print(f"{DARK_YELLOW}Detected NotMaliciousPrompt case. Only 'malicious-prompt' not expected.{RESET}")
+                print(f"expected_labels={expected_labels}")
+                print(f"original_labels={original_labels}")
+                print(f"detected_detectors_labels={detected_detectors_labels}")
+
+            # Explicitly add 'malicious-prompt' to negative_label_map
+            negative_label_map["malicious-prompt"] = "not-malicious-prompt"
+
+            if "malicious-prompt" in detected_detectors_labels:
+                self.add_false_positive(
+                    test,
+                    expected_label="malicious-prompt",
+                    detector_seen="malicious-prompt"
+                )
+            else:
+                self.add_true_negative(
+                    test,
+                    expected_label="malicious-prompt",
+                    detector_not_seen="malicious-prompt"
+                )
+            # Remove helper labels to prevent double-counting downstream
+            expected_labels = [
+                lbl for lbl in expected_labels
+                if lbl not in ("malicious-prompt", "not-malicious-prompt")
+            ]
+            negative_label_map.pop("malicious-prompt", None)
+            negative_label_map.pop("not-malicious-prompt", None)
+        elif explicit_benign:
             if self.debug:
                 print(f"{DARK_YELLOW}Detected explicit benign test case. No detections expected.{RESET}")
                 print(f"expected_labels={expected_labels}")
@@ -362,33 +413,6 @@ class EfficacyTracker:
                 )
             expected_labels.clear()
             negative_label_map.clear()
-        elif explicit_not_mal_prompt:
-            if self.debug:
-                print(f"{DARK_YELLOW}Detected NotMaliciousPrompt case. Only 'malicious-prompt' not expected.{RESET}")
-                print(f"expected_labels={expected_labels}")
-                print(f"original_labels={original_labels}")
-                print(f"detected_detectors_labels={detected_detectors_labels}")
-            if "malicious-prompt" in detected_detectors_labels:
-                self.add_false_positive(
-                    test,
-                    expected_label="not-malicious-prompt",
-                    detector_seen="malicious-prompt"
-                )
-            else:
-                self.add_true_negative(
-                    test,
-                    expected_label="not-malicious-prompt",
-                    detector_not_seen="malicious-prompt"
-                )
-                # Ensure TN is recorded in the per-detector stats explicitly
-                self.per_detector_tn["malicious-prompt"] += 1
-            # Remove malicious-prompt from expected to prevent double FN counting later
-            expected_labels = [
-                lbl for lbl in expected_labels
-                if lbl != "malicious-prompt"
-            ]
-            # Also clear any negative label that might cause FN for malicious-prompt
-            negative_label_map.pop("malicious-prompt", None)
 
         # self.total_calls += 1 # This is handled in AIGuardManager
 
@@ -420,7 +444,8 @@ class EfficacyTracker:
                     self.label_counts[label] += 1
 
         if self.debug:
-            print(f"\n\nDetected detectors labels: {detected_detectors_labels}")
+            print(f"\n\nDetected detectors labels (canonical): {detected_detectors_labels}")
+            print(f"Detected detectors labels (raw)      : {original_detected_labels}")
             print(f"Expected labels: {expected_labels}")
 
         for expected in expected_labels:
@@ -530,6 +555,20 @@ class EfficacyTracker:
                and neg_detector not in self.per_detector_tn:
                 self.per_detector_tn[neg_detector] = 0
 
+        # Make sure benign‑fallback counts have a TN bucket for malicious‑prompt
+        if "malicious-prompt" not in self.per_detector_tn \
+           and "malicious-prompt" not in self.per_detector_tp \
+           and "malicious-prompt" not in self.per_detector_fp \
+           and "malicious-prompt" not in self.per_detector_fn:
+            self.per_detector_tn["malicious-prompt"] = 0
+
+        # ---------------------------------------------------------
+        # Print final debug state before fallback
+        # ---------------------------------------------------------
+        if self.debug:
+            print(f"[DEBUG] Final expected_labels: {expected_labels}")
+            print(f"[DEBUG] Final negative_label_map: {negative_label_map}")
+
         # ---------------------------------------------------------
         # Final fallback to guarantee every test counts for TP or TN
         # ---------------------------------------------------------
@@ -540,19 +579,21 @@ class EfficacyTracker:
                 self.add_true_positive(
                     test,
                     detector_seen="benign",
-                    expected_label="fallback"
+                    expected_label="benign"
                 )
                 if self.debug:
                     print(f"{DARK_YELLOW}Fallback: counted as TP{RESET}")
             else:
                 tn_detected = True
+                # Count a TN under the *malicious‑prompt* detector,
+                # since the benign test implicitly expects it to stay silent.
                 self.add_true_negative(
                     test,
-                    detector_not_seen="benign",
-                    expected_label="fallback"
+                    detector_not_seen="malicious-prompt",
+                    expected_label="benign"
                 )
                 if self.debug:
-                    print(f"{DARK_YELLOW}Fallback: counted as TN{RESET}")
+                    print(f"{DARK_YELLOW}Fallback: counted as TN for malicious-prompt{RESET}")
 
         return (fp_detected, fn_detected, fp_names, fn_names)
 
@@ -729,10 +770,14 @@ class EfficacyTracker:
             TODO: Add create_summary_csv() support as is done in prompt-lab.
         """
         def _print_all_stats(writeln):
+            # Strip out helper/pseudo‑detector labels that should never get their own stats section
             if "benign" in enabled_detectors:
                 enabled_detectors.remove("benign")
             if "" in enabled_detectors:
                 enabled_detectors.remove("")
+            if "not-malicious-prompt" in enabled_detectors:
+                enabled_detectors.remove("not-malicious-prompt")
+
             metrics = self.calculate_metrics()
             writeln(f"\n{BRIGHT_GREEN}AIGuard Efficacy Report{RESET}")
             if self.args and self.args.report_title:

@@ -824,16 +824,28 @@ class AIGuardTests:
                             continue
 
                         messages = line_data.get("messages", [])
+                        # Extract labels from the input line:
+                        # If the label is a dict with "kind" and "tag", combine them into the expected format,
+                        # for example "topic:toxicity" or "not-topic:toxicity".
+                        # Otherwise, support simple list or string formats for legacy or simple test cases.
                         label_field = line_data.get("label")
                         labels = []
 
                         if isinstance(label_field, dict) and "kind" in label_field and "tag" in label_field:
                             kind = label_field["kind"].strip().lower()
                             tag = label_field["tag"].strip().lower()
+
                             if kind == "topic":
                                 labels.append(f"topic:{tag}")
                             elif kind == "nottopic":
                                 labels.append(f"not-topic:{tag}")
+                            elif kind in ["notmaliciousprompt", "not-malicious-prompt"]:
+                                # Negative expectation for the malicious-prompt detector.
+                                # Store BOTH the detector label (for per-detector stats)
+                                # *and* the negative-expectation marker so the efficacy tracker
+                                # knows this is a TN/FP scenario.
+                                labels.append("malicious-prompt")
+                                labels.append("not-malicious-prompt")
                             else:
                                 labels.append(tag)
                         elif isinstance(label_field, list):

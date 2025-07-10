@@ -171,12 +171,13 @@ class ExpectedDetectors:
     def get_expected_detector_labels(self) -> list[str]:
         """
         Using label[] accomplishes almost the same thing and is much easier, 
-        but this allows full specirication of expected detection result details.
+        but this allows full specification of expected detection result details.
 
         Converts the expected detector objects into an easily consumable list of labels.
         Returns a list of expected detector labels based on the detected properties.
-        This method checks the properties of the AIG_API_ExpectedDetectors instance
-        and constructs a list of labels that are expected to be present in the test case."""
+        This method checks the properties of the ExpectedDetectors instance
+        and constructs a list of labels that are expected to be present in the test case.
+        """
         expected_labels: list[str] = []
 
         if self.prompt_injection and self.prompt_injection.detected:
@@ -189,21 +190,18 @@ class ExpectedDetectors:
             else:
                 expected_labels.append("topic:any")
 
-        # TODO: THIS IS UNLIKELY CORRECT BUT ONLY SUPPORTING MALICOUS-PROMPT AND TOPIC FOR NOW
+        # Only supporting malicious-prompt and topic for now
         if self.code_detection and self.code_detection.detected:
             expected_labels.append("code")
 
-        # TODO: THIS IS UNLIKELY CORRECT BUT ONLY SUPPORTING MALICOUS-PROMPT AND TOPIC FOR NOW
         if self.language_detection and self.language_detection.detected:
             expected_labels.append("language")
 
-        # TODO: THIS IS UNLIKELY CORRECT BUT ONLY SUPPORTING MALICOUS-PROMPT AND TOPIC FOR NOW
         if self.malicious_entity and self.malicious_entity.detected:
             entities = self.malicious_entity.data.get("entities", [])
             if entities:
                 expected_labels.append("malicious-entity")
 
-        # TODO: THIS IS UNLIKELY CORRECT BUT ONLY SUPPORTING MALICOUS-PROMPT AND TOPIC FOR NOW
         if self.custom_entity and self.custom_entity.detected:
             entities = self.custom_entity.data.get("entities", [])
             if entities:
@@ -231,22 +229,30 @@ class TestCase:
     def __init__(
         self,
         messages: List[dict],
-        label: Optional[List[str]] = None,
+        label=None,
         settings: Optional[Settings] = None,
         expected_detectors: Optional[dict] = None,
     ):
         self.messages = messages
         self.enabled_override_detectors = [] # Always set in AIGuardTests:load_from_file() for now.
-        self.label = label if label is not None else []
+
+        # Flexible label initialization to allow dicts, lists, or strings
+        if label is None:
+            self.label = []
+        elif isinstance(label, dict):
+            self.label = label  # Allow kind/tag dicts to pass through
+        elif isinstance(label, list):
+            if not all(isinstance(lbl, str) for lbl in label):
+                raise ValueError("All labels in the list must be strings.")
+            self.label = label
+        elif isinstance(label, str):
+            self.label = label
+        else:
+            raise ValueError("Label must be a list of strings, a dict, or a string.")
 
         # Ensure messages is a list of dictionaries
         if not isinstance(self.messages, list) or not all(isinstance(msg, dict) for msg in self.messages):
             raise ValueError("Messages must be a list of dictionaries.")
-        # Ensure labels is a list of strings
-        if label is not None and not isinstance(label, list):
-            raise ValueError("Labels must be a list of strings.")
-        if label is not None and not all(isinstance(label, str) for label in label):
-            raise ValueError("All labels must be strings.")
         # Optional Settings object that can hold recipe, system_prompt, overrides, and log_fields.
         if settings is not None:
             # TODO: Do the settings.overrides etc. work here instead of in AIGuardTests:load_from_file()
@@ -386,11 +392,17 @@ class TestCase:
         expected_detectors = ExpectedDetectors.from_dict(ed_data) if hasattr(ExpectedDetectors, "from_dict") else ed_data
         # Labels
         labels = data.get("label", []) or data.get("labels", [])
-        if not isinstance(labels, list):
+        if isinstance(labels, dict):
+            pass  # Keep dict as-is for kind/tag
+        elif isinstance(labels, str):
             labels = [labels]
+        elif not isinstance(labels, list):
+            labels = []
         # Ensure labels are a list of strings
-        if not isinstance(labels, list) or not all(isinstance(lbl, str) for lbl in labels):
-            raise ValueError("Labels must be a list of strings.")
+        if not (isinstance(labels, list) or isinstance(labels, dict)) or (
+            isinstance(labels, list) and not all(isinstance(lbl, str) for lbl in labels)
+        ):
+            raise ValueError("Labels must be a list of strings or a dict for kind/tag.")
         return cls(
             messages=messages,
             label=labels,
