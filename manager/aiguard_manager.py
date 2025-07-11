@@ -824,7 +824,37 @@ class AIGuardTests:
                             continue
 
                         messages = line_data.get("messages", [])
-                        labels = line_data.get("label", [])
+                        # Extract labels from the input line:
+                        # If the label is a dict with "kind" and "tag", combine them into the expected format,
+                        # for example "topic:toxicity" or "not-topic:toxicity".
+                        # Otherwise, support simple list or string formats for legacy or simple test cases.
+                        label_field = line_data.get("label")
+                        labels = []
+
+                        if isinstance(label_field, dict) and "kind" in label_field and "tag" in label_field:
+                            kind = label_field["kind"].strip().lower()
+                            tag = label_field["tag"].strip().lower()
+
+                            if kind == "topic":
+                                labels.append(f"topic:{tag}")
+                            elif kind == "not-topic":
+                                labels.append(f"not-topic:{tag}")
+                            elif kind in ["notmaliciousprompt", "not-malicious-prompt"]:
+                                # Negative expectation for the malicious-prompt detector.
+                                # Store BOTH the detector label (for per-detector stats)
+                                # *and* the negative-expectation marker so the efficacy tracker
+                                # knows this is a TN/FP scenario.
+                                labels.append("malicious-prompt")
+                                labels.append("not-malicious-prompt")
+                            else:
+                                # For all other kinds, track the kind only; ignore the tagging metadata.
+                                if kind:
+                                    labels.append(kind)
+                        elif isinstance(label_field, list):
+                            labels = label_field
+                        elif isinstance(label_field, str):
+                            labels = [label_field]
+
                         expected_detectors = line_data.get("expected_detectors", None)
                         if not isinstance(labels, list):
                             print(f"Warning: Invalid labels format in line {i}. Expected a list, got {type(labels)}. Skipping test case: {line_data}")
@@ -907,7 +937,7 @@ class AIGuardTests:
             # Ensure system message and recipe
             # If system_prompt or recipe is specified on the command line, it should take precedence
             if system_prompt and system_prompt != "":
-                testcase.ensure_system_message(testcase.get_system_message(default_prompt))
+                testcase.ensure_system_message(testcase.get_system_message(system_prompt))
             if self.args.recipe:
                 self.settings.recipe = self.args.recipe
                 testcase.ensure_recipe(self.args.recipe)

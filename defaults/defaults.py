@@ -69,6 +69,7 @@ malicious_prompt_labels = [
     "injection",
     "jailbreaking",
     "multi-shot",
+    "not-conform",
     "not conform",
 ]
 malicious_prompt_labels_str = ", ".join(malicious_prompt_labels)
