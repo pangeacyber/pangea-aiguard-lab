@@ -847,7 +847,9 @@ class AIGuardTests:
                                 labels.append("malicious-prompt")
                                 labels.append("not-malicious-prompt")
                             else:
-                                labels.append(tag)
+                                # For all other kinds, track the kind only; ignore the tagging metadata.
+                                if kind:
+                                    labels.append(kind)
                         elif isinstance(label_field, list):
                             labels = label_field
                         elif isinstance(label_field, str):
@@ -935,7 +937,7 @@ class AIGuardTests:
             # Ensure system message and recipe
             # If system_prompt or recipe is specified on the command line, it should take precedence
             if system_prompt and system_prompt != "":
-                testcase.ensure_system_message(testcase.get_system_message(default_prompt))
+                testcase.ensure_system_message(testcase.get_system_message(system_prompt))
             if self.args.recipe:
                 self.settings.recipe = self.args.recipe
                 testcase.ensure_recipe(self.args.recipe)
