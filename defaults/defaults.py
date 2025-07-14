@@ -2,6 +2,7 @@
 # Author: Pangea Cyber Corporation
 
 malicious_prompt_str = "malicious-prompt"
+not_malicious_prompt_str = "not-malicious-prompt"
 benign_str = "benign"
 
 
@@ -21,7 +22,10 @@ valid_topics = [
             "gibberish",
         ]
 valid_topics_str = ", ".join(valid_topics)
+topic_str = "topic"
+not_topic_str = "not-topic"
 topic_prefix = "topic:"
+not_topic_prefix = "not-topic:"
 
 # Need to be consistent with how the code handles detector names and topic names.
 # Want to allow --detectors to include both detector names and topic names, and to allow
