@@ -835,17 +835,17 @@ class AIGuardTests:
                             kind = label_field["kind"].strip().lower()
                             tag = label_field["tag"].strip().lower()
 
-                            if kind == "topic":
-                                labels.append(f"topic:{tag}")
-                            elif kind == "not-topic":
-                                labels.append(f"not-topic:{tag}")
-                            elif kind in ["notmaliciousprompt", "not-malicious-prompt"]:
+                            if kind == defaults.topic_str:
+                                labels.append(f"{defaults.topic_prefix}{tag}")
+                            elif kind == defaults.not_topic_str:
+                                labels.append(f"{defaults.not_topic_prefix}{tag}")
+                            elif kind in [defaults.not_malicious_prompt_str, defaults.not_malicious_prompt_str.replace("-","")]:
                                 # Negative expectation for the malicious-prompt detector.
                                 # Store BOTH the detector label (for per-detector stats)
                                 # *and* the negative-expectation marker so the efficacy tracker
                                 # knows this is a TN/FP scenario.
-                                labels.append("malicious-prompt")
-                                labels.append("not-malicious-prompt")
+                                labels.append(defaults.malicious_prompt_str)
+                                labels.append(defaults.not_malicious_prompt_str)
                             else:
                                 # For all other kinds, track the kind only; ignore the tagging metadata.
                                 if kind:
