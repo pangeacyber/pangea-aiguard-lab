@@ -937,7 +937,7 @@ class AIGuardTests:
             # Ensure system message and recipe
             # If system_prompt or recipe is specified on the command line, it should take precedence
             if system_prompt and system_prompt != "":
-                testcase.ensure_system_message(testcase.get_system_message(system_prompt))
+                testcase.force_system_message(system_prompt)
             if self.args.recipe:
                 self.settings.recipe = self.args.recipe
                 testcase.ensure_recipe(self.args.recipe)

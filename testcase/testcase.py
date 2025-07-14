@@ -320,7 +320,7 @@ class TestCase:
             self.expected_detectors = ExpectedDetectors()
 
     # TODO: The Settings.system_prompt could be there AND there could be a system message in the messages list.
-    #       If there is a system message in the messages list, it should take precedence over the system_prompt.
+    #       If there is a system message in the messages list, it should take precedence over the system_prompt. (WHY - WANT TO CHANGE THIS!)
     #       If there is no system message in the messages list, the system_prompt should be added as the first message.
     #       If there is no system_prompt, a default system prompt should be used.
     def get_system_message(self, default_prompt: str = "") -> str:
@@ -347,6 +347,13 @@ class TestCase:
         """Ensures that a 'system' message is present, adding it to the beginning if not already present."""
         if not self.has_system_message():
             self.messages.insert(0, {"role": "system", "content": default_prompt})
+
+    def force_system_message(self, system_message: str):
+        """Ensures the given system message is the first message, replacing any existing system message."""
+        # Remove any existing system message
+        self.messages = [msg for msg in self.messages if msg.get("role") != "system"]
+        # Insert the new system message at the beginning
+        self.messages.insert(0, {"role": "system", "content": system_message})
 
     def ensure_recipe(self, default_recipe: str):
         """Ensures that a recipe is set, using the default if no recipe is already present."""
