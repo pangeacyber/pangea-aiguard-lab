@@ -612,7 +612,7 @@ class AIGuardManager:
                     print(f"\t{DARK_RED}Test:{index}:False Positives: {fp_names}{RESET}")
             if fn_detected:
                 print(f"\t{DARK_RED}Test:{index}:False Negatives: {fn_names}{RESET}")
-            print(f"\t{DARK_YELLOW}Actual Detections: {actual_detectors_labels} Expected:{expected_detectors_labels}{RESET}")
+            # print(f"\t{DARK_YELLOW}Actual Detections: {actual_detectors_labels} Expected:{expected_detectors_labels}{RESET}")
 
             if self.verbose:
                 print(
@@ -623,7 +623,7 @@ class AIGuardManager:
         if not self.efficacy.total_calls:
             print(f"{DARK_YELLOW}No AI Guard calls made.{RESET}")
             return
-        
+
         # TODO: Output the elements of this detectors to report in a more readable format.
         # as summary info:
         # The enabled_detectors
@@ -822,58 +822,7 @@ class AIGuardTests:
                         except Exception:
                             print(f"Skipping invalid JSON line {i}: {line}")
                             continue
-
-                        messages = line_data.get("messages", [])
-                        # Extract labels from the input line:
-                        # If the label is a dict with "kind" and "tag", combine them into the expected format,
-                        # for example "topic:toxicity" or "not-topic:toxicity".
-                        # Otherwise, support simple list or string formats for legacy or simple test cases.
-                        label_field = line_data.get("label")
-                        labels = []
-
-                        if isinstance(label_field, dict) and "kind" in label_field and "tag" in label_field:
-                            kind = label_field["kind"].strip().lower()
-                            tag = label_field["tag"].strip().lower()
-
-                            if kind == defaults.topic_str:
-                                labels.append(f"{defaults.topic_prefix}{tag}")
-                            elif kind == defaults.not_topic_str:
-                                labels.append(f"{defaults.not_topic_prefix}{tag}")
-                            elif kind in [defaults.not_malicious_prompt_str, defaults.not_malicious_prompt_str.replace("-","")]:
-                                # Negative expectation for the malicious-prompt detector.
-                                # Store BOTH the detector label (for per-detector stats)
-                                # *and* the negative-expectation marker so the efficacy tracker
-                                # knows this is a TN/FP scenario.
-                                labels.append(defaults.malicious_prompt_str)
-                                labels.append(defaults.not_malicious_prompt_str)
-                            else:
-                                # For all other kinds, track the kind only; ignore the tagging metadata.
-                                if kind:
-                                    labels.append(kind)
-                        elif isinstance(label_field, list):
-                            labels = label_field
-                        elif isinstance(label_field, str):
-                            labels = [label_field]
-
-                        expected_detectors = line_data.get("expected_detectors", None)
-                        if not isinstance(labels, list):
-                            print(f"Warning: Invalid labels format in line {i}. Expected a list, got {type(labels)}. Skipping test case: {line_data}")
-                            continue
-                        if not isinstance(messages, list) or not all(isinstance(msg, dict) for msg in messages):
-                            print(f"Warning: Invalid messages format in line {i}. Skipping test case: {line_data}")
-                            continue
-                        # Ensure messages is a list of dictionaries
-                        if not messages:
-                            print(f"Warning: Empty messages in line {i}. Skipping test case: {line_data}")
-                            continue
-                        # Append as raw dict for unified processing
-                        data_tests.append({
-                            "index": i,
-                            "label": labels,
-                            "messages": messages,
-                            "settings": line_data.get("settings") or self.settings or None,
-                            "expected_detectors": expected_detectors or None,                            
-                        })
+                        data_tests.append(line_data)
             except FileNotFoundError:
                 print(f"Error: File '{filename}' not found.")
                 return
@@ -914,6 +863,34 @@ class AIGuardTests:
 
 
         for idx, test_data in enumerate(data_tests, start=1):
+            # Normalize label field for both JSONL and JSON inputs
+            # Extract labels from the input line:
+            # If the label is a dict with "kind" and "tag", combine them into the expected format,
+            # for example "topic:toxicity" or "not-topic:toxicity".
+            # Otherwise, support simple list or string formats for legacy or simple test cases.            
+            label_field = test_data.get("label")
+            labels = []
+            if isinstance(label_field, dict) and "kind" in label_field and "tag" in label_field:
+                kind = label_field["kind"].strip().lower()
+                tag = label_field["tag"].strip().lower()
+                if kind == defaults.topic_str:
+                    labels.append(f"{defaults.topic_prefix}{tag}")
+                elif kind == defaults.not_topic_str:
+                    labels.append(f"{defaults.not_topic_prefix}{tag}")
+                elif kind in [defaults.not_malicious_prompt_str, defaults.not_malicious_prompt_str.replace("-","")]:
+                    # Negative expectation for the malicious-prompt detector.
+                    # Store BOTH the detector label (for per-detector stats)
+                    # *and* the negative-expectation marker so the efficacy tracker
+                    # knows this is a TN/FP scenario.
+                    labels.append(defaults.malicious_prompt_str)
+                    labels.append(defaults.not_malicious_prompt_str)
+                else:
+                    if kind:
+                        labels.append(kind)
+            elif isinstance(label_field, list):
+                labels = label_field
+            elif isinstance(label_field, str):
+                labels = [label_field]
             # print(f"Loading test case: {test_data}")
             messages = test_data.get("messages")
             if not isinstance(messages, list) or not all(isinstance(msg, dict) for msg in messages):
@@ -923,7 +900,7 @@ class AIGuardTests:
             # Hydrate TestCase from raw dict (leveraging from_dict on each class)
             raw_tc = {
                 "index": idx,
-                "label": test_data.get("label") or [],
+                "label": labels,
                 "messages": messages,
                 "settings": test_data.get("settings") or self.settings,
                 "expected_detectors": test_data.get("expected_detectors") or None,

@@ -7,6 +7,7 @@ import csv
 from datetime import datetime
 from tzlocal import get_localzone
 import threading
+import time
 
 
 from collections import Counter, defaultdict
@@ -49,6 +50,8 @@ class EfficacyTracker:
             args=None,
             keep_tp_and_tn_tests: bool = False # whether to keep copies of TP and TN test case objs for reporting later
             ):
+        self.start_time = time.time()
+        self.end_time = None
         self.args = args
         self.verbose = args.verbose if args else False
         self.debug = args.debug if args else False
@@ -791,6 +794,7 @@ class EfficacyTracker:
             writeln(f"Total Calls: {self.total_calls}")
             writeln(f"Requests per second: {self.args.rps}")
             writeln(f"Average duration: {metrics['overall']['avg_duration']:.4f} seconds")
+            writeln(f"Total duration: {self.end_time - self.start_time:.2f} seconds")
             writeln(f"\n{RED}Errors: {self.errors}{RESET}")
 
             for detector, det_metrics in metrics.items():
@@ -823,9 +827,7 @@ class EfficacyTracker:
                 writeln(f"False Negative Rate: {DARK_RED}{det_metrics['fn_rate']:.4f}{RESET}")
                 if detector == "overall":
                     writeln(f"\n{GREEN}-- Info on Test Cases Saved for Reporting {RESET}--")
-                    writeln(f"NOTE: These are the test cases that had non-zero FP/FN/TP/TN stats.")
-                    writeln(f"NOTE: TP and TN cases not saved unless track_tp_and_tn_cases is True.")
-                    writeln(f"      track_tp_and_tn_cases: {self.track_tp_and_tn_cases}")
+                    writeln(f"track_tp_and_tn_cases: {self.track_tp_and_tn_cases}")
                     writeln(f"Total Test Cases Saved: {det_metrics['total_saved_test_count']}")
                     if det_metrics['total_saved_test_count'] == 0:
                         writeln(f"{DARK_YELLOW}No test cases saved.{RESET}")
@@ -859,6 +861,7 @@ class EfficacyTracker:
                         writeln(f"\tMessages: {formatted_json_str(fn_case.test.messages[:3])}")
 
         """ print_stats() body here"""
+        self.end_time = time.time()
         if self.args and self.args.summary_report_file:
             with open(self.args.summary_report_file, "w") as f:
                 def writeln(line: str = ""):
@@ -900,8 +903,9 @@ class EfficacyTracker:
                 csvwriter = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL)
                 csvwriter.writerow(
                     [
-                        "Test Messages",
                         "Test Case Index",
+                        "Test Messages",
+                        "System Prompt",
                         "Expected Label",
                         "Test Case Labels",
                         "FP Detector" if positive else "FN Detector",
@@ -931,14 +935,17 @@ class EfficacyTracker:
                         if isinstance(case.test.label, list)
                         else case.test.label
                     )
+                    system_prompt = case.test.system_prompt if hasattr(case.test, "system_prompt") else "No System Prompt"
+                    system_prompt = system_prompt.replace("\n", " ").replace("\r", " ")
 
                     # Use detector_seen if present, else detector_not_seen; always a string.
                     detector_field = getattr(case, "detector_seen" if positive else "detector_not_seen", None)
                     detected_detectors = detector_field
                     csvwriter.writerow(
                         [
-                            test_case_messages,
                             test_case_index,
+                            test_case_messages,
+                            system_prompt,
                             expected_labels,
                             test_case_labels,
                             detected_detectors,
