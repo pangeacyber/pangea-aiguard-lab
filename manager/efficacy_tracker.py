@@ -935,7 +935,7 @@ class EfficacyTracker:
                         if isinstance(case.test.label, list)
                         else case.test.label
                     )
-                    system_prompt = case.test.system_prompt if hasattr(case.test, "system_prompt") else "No System Prompt"
+                    system_prompt = case.test.get_system_message()
                     system_prompt = system_prompt.replace("\n", " ").replace("\r", " ")
 
                     # Use detector_seen if present, else detector_not_seen; always a string.
