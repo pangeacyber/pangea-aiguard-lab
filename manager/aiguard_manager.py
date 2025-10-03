@@ -69,6 +69,7 @@ class AIGuardManager:
         self.service = service
         self.endpoint = endpoint
 
+        self.use_labels_as_detectors = args.use_labels_as_detectors
         self.report_any_topic = args.report_any_topic
         self.valid_detectors = defaults.valid_detectors
         self.valid_topics = defaults.valid_topics
@@ -115,7 +116,7 @@ class AIGuardManager:
                 print(f"{DARK_GREEN}Enabled topics: {', '.join(self.enabled_topics)}{RESET}")
 
         self.fail_fast = args.fail_fast
-        self.topic_threshold = args.topic_threshold if args.topic_threshold else 1.0
+        self.topic_threshold = args.topic_threshold if args.topic_threshold else defaults.topic_threshold
 
         self.malicious_prompt_labels: list[str] = []
         self.malicious_prompt_labels = (
@@ -727,10 +728,23 @@ class AIGuardManager:
             enabled_topics = remove_topic_prefix(list({
                 t for t in enabled_detectors if t.startswith(defaults.topic_prefix)
             }))
-            
+
+        if self.use_labels_as_detectors:
+            # If using labels as detectors, we will use the test case's labels as enabled detectors/topics.
+            # This means we will not use the recipe's detectors/topics, but rather the labels.
+            # Use a set to deduplicate topic-prefixed entries
+            for t in test.label:
+                if t in self.valid_detectors and t not in enabled_detectors:
+                    enabled_detectors.append(t)
+
+            for t in test.label:
+                if t.startswith(defaults.topic_prefix) and t not in enabled_topics:
+                    enabled_topics.append(t)
+            enabled_topics = remove_topic_prefix(enabled_topics)
+
         data = {"recipe": test.get_recipe(), "messages": test.messages, "debug": self.debug}
 
-        if enabled_detectors:
+        if enabled_detectors or self.use_labels_as_detectors or self.report_any_topic:
             overrides = {
                 "ignore_recipe": True
             }
@@ -976,6 +990,12 @@ class AIGuardTests:
                 # If not using the test case's settings.overrides, then update the self.aig.enabled_topics
                 cmd_line_enabled_detectors: list[str] = self.aig.enabled_detectors
                 effective_enabled_detectors: list[str] = cmd_line_enabled_detectors
+                if self.aig.use_labels_as_detectors:
+                    # If using labels as topics, we will use the test case's labels as topics.
+                    # This means we will not use the recipe's topics, but rather the labels.
+                    effective_enabled_detectors = remove_topic_prefix(list({
+                        t for t in testcase.label if t.startswith(defaults.topic_prefix)
+                    }))
                 test_case_enabled_detectors: list[str] = []
                 global_settings_enabled_detectors: list[str] = []
                 if testcase.settings and getattr(testcase.settings, "overrides", None):

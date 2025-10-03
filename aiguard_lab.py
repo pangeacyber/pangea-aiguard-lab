@@ -94,6 +94,15 @@ def main():
         ),
     )
     processing_group.add_argument(
+        "--use_labels_as_detectors",
+        action="store_true",
+        help=(
+            "Use the labels from the test cases as topics for detection.\n"
+            "This will enable all topic detectors corresponding to the labels in the test cases.\n"
+            "Default: False."
+        ),  
+    )
+    processing_group.add_argument(
         "--report_any_topic",
         action="store_true",
         help=(
