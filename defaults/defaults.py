@@ -86,7 +86,7 @@ benign_labels = [
 ]
 benign_labels_str = ", ".join(benign_labels)
 
-topic_threshold = 1.0
+topic_threshold = 0.5
 topic_thresholds = {
     "toxicity": topic_threshold,
     "self-harm-and-violence": topic_threshold,

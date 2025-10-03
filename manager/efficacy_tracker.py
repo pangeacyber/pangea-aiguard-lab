@@ -56,6 +56,7 @@ class EfficacyTracker:
         self.verbose = args.verbose if args else False
         self.debug = args.debug if args else False
         self.track_tp_and_tn_cases = keep_tp_and_tn_tests 
+        self.use_labels_as_detectors = args.use_labels_as_detectors if args else False
         self._lock = threading.Lock()
         # Overall counts
         self.tp_count = 0
@@ -266,20 +267,10 @@ class EfficacyTracker:
             They should have been removed if seen - benign means no detection expected.
 
         """
-
-        def _canon(label: str) -> str:
-            """Return a canonical detector/topic name for comparison.
-
-            Strips the optional 'topic:' prefix from positives and negatives.
-            e.g. 'topic:legal-advice' -> 'legal-advice'
-                 'not-topic:legal-advice' -> 'not-topic:legal-advice'  (negatives kept)
-            """
-            if label.startswith("topic:"):
-                return label.split("topic:", 1)[1]  # drop prefix
-            return label
+       
         # Default negative_labels if none passed
         if negative_labels is None:
-            negative_labels = ["not-topic:*"]  # default pattern
+            negative_labels = [f"{defaults.not_topic_prefix}*"]  # default pattern
 
         # Allow single-string inputs by wrapping into a list
         if isinstance(expected_labels, str):
@@ -327,8 +318,8 @@ class EfficacyTracker:
 
         # Canonicalize expected_labels (strip 'topic:' if present)
         def _canon(label: str) -> str:
-            if label.startswith("topic:"):
-                return label.split("topic:", 1)[1]
+            if label.startswith(defaults.topic_prefix):
+                return label.split(defaults.topic_prefix, 1)[1]  # drop prefix
             return label
         expected_labels = [_canon(lbl) for lbl in expected_labels]
 
@@ -464,6 +455,7 @@ class EfficacyTracker:
                     detector_seen=expected
                 )
             else:
+                # If the expected label is not in the detected labels, it's a False Negative
                 if self.debug:
                     print(f"{DARK_YELLOW}Checking for expected label '{expected}' in detected_detectors_labels...{RESET}")
                     print(f"{DARK_YELLOW}FN: Expected label '{expected}' not detected in {detected_detectors_labels}{RESET}")
@@ -476,6 +468,20 @@ class EfficacyTracker:
                     detector_not_seen=expected,
                     expected_label=expected
                 )
+
+        # --------------------------------------------------------------
+        # Any detection that does not match an expected label is a False Positive.
+        # --------------------------------------------------------------  
+        for detected in detected_detectors_labels:
+            if detected not in expected_labels:
+                fp_detected = True
+                found_fp.add(detected)
+                self.add_false_positive(
+                    test,
+                    expected_label=f"{defaults.not_topic_prefix}{detected}",
+                    detector_seen=detected
+                )
+            # else: would have already been counted as a TP above
 
         # ------------------------------
         # Evaluate negative label cases
