@@ -9,7 +9,9 @@ from requests.models import Response
 from urllib.parse import urljoin
 from utils.colors import DARK_RED, DARK_YELLOW, DARK_BLUE, DARK_GREEN, RED, RESET
 from defaults import defaults
+from dotenv import load_dotenv
 
+load_dotenv(override=True)
 
 ai_guard_token = os.getenv(defaults.ai_guard_token)
 assert ai_guard_token, f"{defaults.ai_guard_token} environment variable not set"
