@@ -194,6 +194,29 @@ def main():
             "2) Ignore overrides - the AI Guard Lab tool relies on overrides in many cases.  "
         ),
     )
+    processing_group.add_argument(
+        "--aidr_config",
+        type=str,
+        default=None,
+        help=(
+            "JSON string or path to JSON file with AIDR metadata overrides.\n"
+            "Default metadata:\n"
+            "  event_type: input\n"
+            "  app_id: AIG-lab\n"
+            "  actor_id: test tool\n"
+            "  llm_provider: test\n"
+            "  model: GPT-6-super\n"
+            "  model_version: 6s\n"
+            "  source_ip: 74.244.51.54\n"
+            "  extra_info:\n"
+            "    actor_name: {current_user}\n"
+            "    app_name: AIGuard-lab\n\n"
+            "Example JSON override:\n"
+            '  --aidr_config \'{"app_id": "MyApp", "model": "GPT-4"}\'\n'
+            "Or path to file:\n"
+            "  --aidr_config /path/to/config.json"
+        ),
+    )
 
     output_group = parser.add_argument_group("Output and reporting")
     output_group.add_argument(

@@ -48,9 +48,20 @@ from utils.colors import (
 from defaults import defaults
 
 
+# Detector name mapping for different services
 
 
 class AIGuardManager:
+    DETECTOR_NAME_MAPPING = {
+        "aidr": {
+            "malicious_prompt": "malicious-prompt",
+            "topic": "topic",
+        },
+        "aiguard": {
+            "prompt_injection": "malicious-prompt",
+            "topic": "topic",
+        }
+    }
     def __init__(
         self,
         args,
@@ -58,7 +69,19 @@ class AIGuardManager:
         service: str = defaults.ai_guard_service,
         endpoint: str = defaults.ai_guard_endpoint,
     ):
+
         self._lock = threading.Lock()
+
+        self.service = args.service
+        if self.service == "aidr":
+            self.endpoint = defaults.aidr_guard_endpoint
+        else:
+            self.endpoint = endpoint
+
+        # Parse AIDR config if provided
+        self.aidr_config = None
+        if args.aidr_config:
+            self.aidr_config = self._parse_aidr_config(args.aidr_config)
 
         self.efficacy = EfficacyTracker(args=args)
         self.verbose = args.verbose
@@ -152,6 +175,34 @@ class AIGuardManager:
         self.detected_languages: Counter = Counter()
         self.detected_code_languages: Counter = Counter()
 
+    def _parse_aidr_config(self, aidr_config_arg):
+        """
+        Parse AIDR config from JSON string or file path.
+
+        Args:
+            aidr_config_arg: JSON string or path to JSON file
+
+        Returns:
+            Dictionary with AIDR config overrides
+        """
+        import os
+        import json
+
+        # Check if it's a file path
+        if os.path.isfile(aidr_config_arg):
+            try:
+                with open(aidr_config_arg, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"{DARK_RED}Error loading AIDR config from file: {e}{RESET}")
+                return None
+
+        # Try to parse as JSON string
+        try:
+            return json.loads(aidr_config_arg)
+        except json.JSONDecodeError as e:
+            print(f"{DARK_RED}Error parsing AIDR config JSON: {e}{RESET}")
+            return None
 
     def add_error_response(self, response):
         """ TODO: Allow error responses to be added to an output file and flushed to disk as they come in"""
@@ -488,19 +539,27 @@ class AIGuardManager:
         Ensure actual_detectors is normalized so that topic names are always in the topic:<topic-name> format
         Extracts labels from the actual detectors detected in the response.
         This will return a list of labels corresponding to the actual detectors detected.
-        For example, if "prompt_injection" is detected, it will return ["malicious-prompt"].
+        For example, if "prompt_injection" or "malicious_prompt" is detected, it will return ["malicious-prompt"].
         For "topic", it will return a list of topics detected, such as ["negative-sentiment"].
         """
         labels: list[str] = []
         try:
             if not actual_detectors:
                 print(f"{DARK_RED}No actual detectors found in response.{RESET}")
-                # If no detectors are found, return an empty list
                 return labels
+
+            # Get the appropriate detector mapping for the current service
+            detector_mapping = self.DETECTOR_NAME_MAPPING.get(self.service, {})
 
             for detector, details in actual_detectors.items():
                 if details.get("detected", False):
-                    if detector == "prompt_injection":
+                    # Map the detector name to the standard label
+                    mapped_label = detector_mapping.get(detector)
+
+                    if self.debug:
+                        print(f"{DARK_YELLOW}Detector: {detector}, Mapped label: {mapped_label}{RESET}")
+
+                    if mapped_label == "malicious-prompt":
                         labels.append("malicious-prompt")
                     elif detector == "topic":
                         topics = details.get("data", {}).get("topics", [])
@@ -522,6 +581,7 @@ class AIGuardManager:
             print(f"{DARK_RED}KeyError extracting labels from actual detectors: {e}{RESET}")
         except Exception as e:
             print(f"{DARK_RED}Error extracting labels from actual detectors: {e}{RESET}")
+
         if self.debug:
             print(f"{DARK_YELLOW}Extracted labels from actual detectors: {labels}{RESET}")
 
@@ -678,14 +738,20 @@ class AIGuardManager:
 
         self.efficacy.print_errors()
 
-    def _ai_guard_data(
-            self,
-            data: dict,
-    ):
+    def _ai_guard_data(self, data: dict):
         if self.debug:
             print(f"\nCalling AI Guard with Data: {formatted_json_str(data)}")
+            if self.service == "aidr" and self.aidr_config:
+                print(f"{DARK_YELLOW}AIDR Config Override: {formatted_json_str(self.aidr_config)}{RESET}")
 
-        response = pangea_post_api(self.service, self.endpoint, data, skip_cache=self.skip_cache)
+        # Pass aidr_config to pangea_post_api
+        response = pangea_post_api(
+            self.service,
+            self.endpoint,
+            data,
+            skip_cache=self.skip_cache,
+            aidr_config=self.aidr_config if self.service == "aidr" else None
+        )
 
         # Handle response
         if response.status_code == 202:
