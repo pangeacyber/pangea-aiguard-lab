@@ -53,21 +53,12 @@ This tool is a successor to the [`pangea-prompt-lab`](https://github.com/pangeac
       export PANGEA_AI_GUARD_TOKEN="<default-token-value>"
       ```
 
-      _or_
-
-      Create a `.env` file:
-
-      ```bash
-      cp .env.example .env
-      ```
-
-      Then populate it using the **Domain** and **Default Token** values from the service configuration.
-
       > Use your project **Domain** value as part of the base URL. Including the full base URL allows this tool to work with custom deployments, including those accessed locally via port forwarding.
    
    - NOTE: If you get 400 or 403 errors when running aiguard_lab.py, the cause is most likely incorrect values for PANGEA_BASE_URL and/or PANGEA_AI_GUARD_TOKEN.
 
 ## Usage
+
 
 The primary use case is to:
 1. Specify input file containing **TestCase** records using `--input_file` 
@@ -112,6 +103,29 @@ poetry run python aiguard_lab.py \
 --summary_report_file test_dataset.summary.txt \
 --rps 25
 ```
+
+## AIDR Service Support
+
+The AI Guard Lab tool supports testing against the **AIDR (AI Detection & Response)** service, which uses a different API endpoint.
+
+To test against AIDR, add the --service aidr flag.
+
+### Key Differences
+
+When using AIDR service:
+1. **API Schema**: Uses `v1beta/guard` endpoint with messages wrapped in an `input` object
+2. **No Overrides Support**: AIDR does not currently support the `overrides` configuration that AI Guard uses. The tool will automatically skip override logic when using AIDR.
+3. **Recipe-Based Configuration**: Detection behavior is controlled entirely by the policy of collector. Input policy used by default.
+
+### Prerequisites for AIDR
+
+1. Obtain an AIDR API token from your AIDR deployment
+2. Set the AIDR-specific environment variables:
+
+   ```bash
+   export PANGEA_BASE_URL="https://<aidr-domain>"
+   export PANGEA_AIDR_TOKEN="<your-aidr-token>"
+
 
 ## Input Files and Formats
 - `data/test_dataset.jsonl` is a Pangea curated dataset that will be expanded over time.
@@ -355,6 +369,10 @@ Detection and evaluation configuration:
                         Use the pattern 'not-topic:<topic-name>' (e.g. not-topic:legal-advice).
                         Test cases with any of these labels expect **no** detections from the corresponding detector (FP if it does).
                         Default: not-topic:*
+   --service {aiguard,aidr}
+                        Specify the service to use for processing.
+                        AIDR service (and token) will cause tool to 1) log to a different location (the AIDR schema rather than the default for AIG), 
+                        2) Ignore overrides - the AI Guard Lab tool relies on overrides in many cases.                        
   --recipe RECIPE       The recipe to use for processing the prompt.
                         Useful when using --prompt for a single prompt.
                         Available recipes:

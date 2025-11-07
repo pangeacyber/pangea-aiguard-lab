@@ -66,8 +66,12 @@ class AIGuardManager:
         self.max_poll_attempts = args.max_poll_attempts
 
         self.skip_cache = skip_cache
-        self.service = service
-        self.endpoint = endpoint
+
+        self.service = args.service
+        if self.service == "aidr":
+            self.endpoint = defaults.aidr_guard_endpoint
+        else:
+            self.endpoint = endpoint
 
         self.use_labels_as_detectors = args.use_labels_as_detectors
         self.report_any_topic = args.report_any_topic
@@ -675,13 +679,14 @@ class AIGuardManager:
         self.efficacy.print_errors()
 
     def _ai_guard_data(
-        self,
-        data: dict,
+            self,
+            data: dict,
     ):
         if self.debug:
             print(f"\nCalling AI Guard with Data: {formatted_json_str(data)}")
 
         response = pangea_post_api(self.service, self.endpoint, data, skip_cache=self.skip_cache)
+
         # Handle response
         if response.status_code == 202:
             request_id = response.json()["request_id"]
@@ -708,10 +713,28 @@ class AIGuardManager:
             return {k: v for k, v in vars(obj).items() if v not in (None, {}, [], "")}
         return {}
 
+    def aidr_service(self, recipe: str, messages: List[Dict[str, str]]):
+        """
+        Call AIDR service with v1beta/guard endpoint format.
+        AIDR requires messages wrapped in an 'input' object and doesn't support overrides.
+        """
+        data = {
+            "input": {
+                "messages": messages
+            },
+            "recipe": recipe,
+            "debug": self.debug
+        }
+
+        if self.debug:
+            print(f"{DARK_YELLOW}AIDR service: using v1beta format (no overrides){RESET}")
+
+        return self._ai_guard_data(data)
+
     def ai_guard_test(self, test: TestCase):
-        """ 
+        """
         Prepare the data for AI Guard API call based on the test case.
-        This includes setting overrides, messages, and recipe. 
+        This includes setting overrides, messages, and recipe.
         """
 
         ## TODO:
@@ -742,6 +765,13 @@ class AIGuardManager:
                     enabled_topics.append(t)
             enabled_topics = remove_topic_prefix(enabled_topics)
 
+        # Use AIDR-specific service method
+        if self.service == "aidr":
+            if self.debug:
+                print(f"{DARK_YELLOW}AIDR service: skipping overrides{RESET}")
+            return self.aidr_service(test.get_recipe(), test.messages)
+
+        # Original AI Guard logic
         data = {"recipe": test.get_recipe(), "messages": test.messages, "debug": self.debug}
 
         if enabled_detectors or self.use_labels_as_detectors or self.report_any_topic:
@@ -754,7 +784,7 @@ class AIGuardManager:
                 "disabled": False,
                 "action": "block" if self.fail_fast else "report"
             }
-            
+
             topic = {
                 "disabled": False,
                 # TODO: How is if test.settings.overrides.topic, then use action and topic_threshold from there.
@@ -772,6 +802,7 @@ class AIGuardManager:
                 overrides["topic"] = topic
 
             data["overrides"] = overrides
+
         elif test is not None and test.settings:
             # TODO: No longer needed?  Especially once TestCase::__init__ does he right thing to load settings and overrides.
             if test.settings.overrides and isinstance(test.settings.overrides, Overrides):

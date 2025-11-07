@@ -183,7 +183,17 @@ def main():
         ),
         default=defaults.default_recipe,
     )
-
+    processing_group.add_argument(
+        "--service",
+        default="aiguard",
+        choices=("aiguard", "aidr"),
+        type=str,
+        help=(
+            "Specify the service to use for processing.\n"
+            "AIDR service (and token) will cause tool to 1) log to a different location (the AIDR schema rather than the default for AIG), \n"
+            "2) Ignore overrides - the AI Guard Lab tool relies on overrides in many cases.  "
+        ),
+    )
 
     output_group = parser.add_argument_group("Output and reporting")
     output_group.add_argument(
