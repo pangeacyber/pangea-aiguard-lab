@@ -1,3 +1,4 @@
+#!/usr/bin/env -S poetry run python
 # Copyright 2021 Pangea Cyber Corporation
 # Author: Pangea Cyber Corporation
 
@@ -5,56 +6,111 @@ import os
 import time
 import json
 import requests
+import getpass
 from requests.models import Response
 from urllib.parse import urljoin
 from utils.colors import DARK_RED, DARK_YELLOW, DARK_BLUE, DARK_GREEN, RED, RESET
 from defaults import defaults
+from dotenv import load_dotenv
 
+load_dotenv(override=True)
 
 ai_guard_token = os.getenv(defaults.ai_guard_token)
 assert ai_guard_token, f"{defaults.ai_guard_token} environment variable not set"
-# domain = os.getenv(defaults.pangea_domain)
-# assert domain, f"{defaults.pangea_domain} environment variable not set"
 base_url = os.getenv(defaults.pangea_base_url)
 assert base_url, f"{defaults.pangea_base_url} environment variable not set"
 
-
-
 connection_timeout = defaults.connection_timeout
-# Default is 12 seconds, but can be overridden by the user
 read_timeout = defaults.read_timeout
+
+# Default AIDR metadata
+DEFAULT_AIDR_METADATA = {
+    "event_type": "input",
+    "app_id": "AIG-lab",
+    "actor_id": "test tool",
+    "llm_provider": "test",
+    "model": "GPT-6-super",
+    "model_version": "6s",
+    "source_ip": "74.244.51.54",
+    "extra_info": {
+        "actor_name": getpass.getuser(),  # Gets current username
+        "app_name": "AIGuard-lab"
+    }
+}
 
 
 def create_error_response(status_code, message):
     """Create a mock error response."""
-    # Create a new Response object
     response = Response()
-
-    # Set the status code to simulate the error
     response.status_code = status_code
-
-    # Set the response content as JSON, with a 'status' field
     error_content = {"status": status_code, "message": message}
-
-    # Convert the dictionary to JSON and encode it as bytes for _content
     response._content = json.dumps(error_content).encode("utf-8")
     return response
 
 
-def pangea_post_api(service, endpoint, data, skip_cache=False, token=ai_guard_token, base_url=base_url):
+def merge_aidr_metadata(data, aidr_config=None):
+    """
+    Merge AIDR metadata into the request data.
+
+    Args:
+        data: The base request data
+        aidr_config: Optional dictionary to override default AIDR metadata
+
+    Returns:
+        Updated data dictionary with AIDR metadata
+    """
+    # Start with default metadata
+    metadata = DEFAULT_AIDR_METADATA.copy()
+
+    # Deep copy extra_info to avoid modifying the default
+    metadata["extra_info"] = DEFAULT_AIDR_METADATA["extra_info"].copy()
+
+    # Override with custom config if provided
+    if aidr_config:
+        for key, value in aidr_config.items():
+            if key == "extra_info" and isinstance(value, dict):
+                # Merge extra_info specifically
+                metadata["extra_info"].update(value)
+            else:
+                metadata[key] = value
+
+    # Merge metadata into data (don't override existing keys in data)
+    for key, value in metadata.items():
+        if key not in data:
+            data[key] = value
+
+    return data
+
+
+def pangea_post_api(service, endpoint, data, skip_cache=False, token=ai_guard_token, base_url=base_url,
+                    aidr_config=None):
+    """
+    Post to Pangea API with optional AIDR metadata injection.
+
+    Args:
+        service: Service name ('aiguard' or 'aidr')
+        endpoint: API endpoint
+        data: Request payload
+        skip_cache: Whether to skip cache
+        token: API token
+        base_url: Base URL for API
+        aidr_config: Optional AIDR metadata overrides (only used if service=='aidr')
+    """
     try:
+        # Add AIDR metadata if using AIDR service
+        if service == "aidr":
+            data = merge_aidr_metadata(data, aidr_config)
+
         url = urljoin(base_url, endpoint)
-        # print(f"POST {url} with data: {data}")
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
         if skip_cache:
-            headers["x-pangea-skipcache"] = "true"  # avoid caching
-        # print(f"POST {url}, headers: {headers}, data: {data}")
+            headers["x-pangea-skipcache"] = "true"
+
         response = requests.post(url, headers=headers, json=data, timeout=(connection_timeout, read_timeout))
         if response is None:
-            # Simulate an error response if the actual response is None or status code isn't 200
             return create_error_response(500, "Internal server error: failed to fetch data")
         return response
     except requests.exceptions.Timeout:
@@ -64,10 +120,10 @@ def pangea_post_api(service, endpoint, data, skip_cache=False, token=ai_guard_to
 
 
 def pangea_get_api(endpoint, token=ai_guard_token, base_url=base_url):
+    """GET request to Pangea API (used for polling)."""
     try:
         url = urljoin(base_url, endpoint)
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
         response = requests.get(url, headers=headers, timeout=(connection_timeout, read_timeout))
         return response
     except requests.exceptions.Timeout:
@@ -77,7 +133,7 @@ def pangea_get_api(endpoint, token=ai_guard_token, base_url=base_url):
 
 
 def pangea_request(request_id, token=ai_guard_token, base_url=base_url):
-    # service = "ai-guard"
+    """Poll a specific request by ID."""
     endpoint = f"/request/{request_id}"
     return pangea_get_api(endpoint, token=token, base_url=base_url)
 
@@ -95,15 +151,11 @@ def poll_request(request_id, max_attempts=12, verbose=False, token=ai_guard_toke
         response = pangea_request(request_id, token=token, base_url=base_url)
         if response is None:
             if verbose:
-                print(f"\n{DARK_YELLOW}poll_request failed with no response." f"{RESET}")
+                print(f"\n{DARK_YELLOW}poll_request failed with no response.{RESET}")
             break
-        # print(
-        #     f"\nRaw response: {response} "
-        #     f"response.json: {response.json()}\n"
-        # )
         status_code = response.json()["status"]
         if verbose:
-            print(f" {DARK_BLUE}{counter}{RESET} : " f"Polling status code is {status_code} ...", end="\r")
+            print(f" {DARK_BLUE}{counter}{RESET} : Polling status code is {status_code} ...", end="\r")
         if status_code == "Success":
             if verbose:
                 print(f"\n{DARK_GREEN}Success{RESET} for request {request_id}:")
@@ -117,7 +169,7 @@ def poll_request(request_id, max_attempts=12, verbose=False, token=ai_guard_toke
 
         if counter == max_attempts:
             if verbose:
-                print(f"\n{RED}Max attempts reached. " f"Exiting polling loop.{RESET}")
+                print(f"\n{RED}Max attempts reached. Exiting polling loop.{RESET}")
             break
         time.sleep(5)
         counter += 1

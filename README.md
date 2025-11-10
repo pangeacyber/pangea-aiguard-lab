@@ -53,6 +53,16 @@ This tool is a successor to the [`pangea-prompt-lab`](https://github.com/pangeac
       export PANGEA_AI_GUARD_TOKEN="<default-token-value>"
       ```
 
+      _or_
+
+      Create a `.env` file:
+
+      ```bash
+      cp .env.example .env
+      ```
+
+      Then populate it using the **Domain** and **Default Token** values from the service configuration.
+
       > Use your project **Domain** value as part of the base URL. Including the full base URL allows this tool to work with custom deployments, including those accessed locally via port forwarding.
    
    - NOTE: If you get 400 or 403 errors when running aiguard_lab.py, the cause is most likely incorrect values for PANGEA_BASE_URL and/or PANGEA_AI_GUARD_TOKEN.
@@ -106,16 +116,17 @@ poetry run python aiguard_lab.py \
 
 ## AIDR Service Support
 
-The AI Guard Lab tool supports testing against the **AIDR (AI Detection & Response)** service, which uses a different API endpoint.
+The AI Guard Lab tool supports testing against the **AIDR (AI Detection & Response)** service, which uses a different API endpoint and includes additional metadata for logging and tracking.
 
-To test against AIDR, add the --service aidr flag.
+To test against AIDR, add the `--service aidr` flag.
 
 ### Key Differences
 
 When using AIDR service:
 1. **API Schema**: Uses `v1beta/guard` endpoint with messages wrapped in an `input` object
 2. **No Overrides Support**: AIDR does not currently support the `overrides` configuration that AI Guard uses. The tool will automatically skip override logic when using AIDR.
-3. **Recipe-Based Configuration**: Detection behavior is controlled entirely by the policy of collector. Input policy used by default.
+3. **Recipe-Based Configuration**: Detection behavior is controlled entirely by the policy of the collector. Input policy is used by default.
+4. **Automatic Metadata Injection**: AIDR requests automatically include metadata for logging and tracking purposes.
 
 ### Prerequisites for AIDR
 
@@ -125,6 +136,68 @@ When using AIDR service:
    ```bash
    export PANGEA_BASE_URL="https://<aidr-domain>"
    export PANGEA_AIDR_TOKEN="<your-aidr-token>"
+    ```
+
+### AIDR Metadata
+When using --service aidr, the tool automatically injects the following metadata into each request:
+
+Default Metadata:
+
+   ```json
+{
+  "event_type": "input",
+  "app_id": "AIG-lab",
+  "actor_id": "test tool",
+  "llm_provider": "test",
+  "model": "GPT-6-super",
+  "model_version": "6s",
+  "source_ip": "74.244.51.54",
+  "extra_info": {
+    "actor_name": "<current_system_username>",
+    "app_name": "AIGuard-lab"
+  }
+}
+   ```
+
+NOTE: The actor_name is automatically populated with your current system username.
+
+Customizing AIDR Metadata
+You can override the default AIDR metadata using the --aidr_config flag with either a JSON string or a path to a JSON file:
+
+Using JSON string:
+
+   ```bash
+poetry run python aiguard_lab.py \
+  --input_file data/test_dataset.jsonl \
+  --service aidr \
+  --aidr_config '{"app_id": "MyApp", "model": "GPT-4o", "extra_info": {"environment": "production"}}'
+   ```
+
+Using JSON file:
+
+Create aidr_config.json:
+
+```json
+{
+  "app_id": "ProductionApp",
+  "llm_provider": "OpenAI",
+  "model": "GPT-4-turbo",
+  "model_version": "4-turbo-2025",
+  "extra_info": {
+    "actor_name": "Test User",
+    "environment": "production",
+    "team": "security"
+  }
+}
+```
+
+Then run:
+```bash
+python aiguard_lab.py \
+  --input_file data/test_dataset.jsonl \
+  --service aidr \
+  --aidr_config aidr_config.json
+   ```
 
 
 ## Input Files and Formats
