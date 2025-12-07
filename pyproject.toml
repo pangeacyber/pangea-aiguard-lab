@@ -12,6 +12,7 @@ argparse = "^1.4.0"
 tzlocal = "^5.2"
 pydantic = "^2.10.6"
 pip-system-certs = "5.2"
+dotenv = "^0.9.9"
 
 
 [build-system]

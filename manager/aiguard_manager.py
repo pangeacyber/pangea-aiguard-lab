@@ -26,7 +26,7 @@ from testcase.testcase import TestCase
 from .efficacy_tracker import EfficacyTracker
 from utils.utils import normalize_topics_and_detectors
         
-from api.pangea_api import pangea_post_api, poll_request
+from api.pangea_api import pangea_post_api, poll_request, base_url
 from utils.utils import (
     remove_topic_prefix,
     apply_synonyms,
@@ -617,6 +617,8 @@ class AIGuardManager:
         summary = response.json().get("summary", "None")
         result = response.json().get("result", {})
         blocked = result.get("blocked", False)
+        if self.service == "aidr":
+            guard_output = result.get("guard_output")
 
         if blocked:
             self.efficacy.blocked += 1
@@ -627,11 +629,14 @@ class AIGuardManager:
             else:
                 print(f"\t{DARK_GREEN}Allowed")
 
-        if self.verbose:
-            print(f"\tSummary: {summary}{RESET}")
+            print(f"\tSummary: {summary}")
+            if self.service == "aidr":
+                print(f"\tguard_output:\n\t{formatted_json_str(guard_output)}")
+            print(f"{RESET}")
+                
         if self.debug:
             print(f"\tResponse.status_code: {response.status_code}")
-            print(f"\tResponse: {formatted_json_str(response.json())}{RESET}")
+            print(f"\tResponse:\n{formatted_json_str(response.json())}{RESET}")
 
         # Extract info on detected detectors and their sub-details
         # This will return a list of dictionaries with the detector name and its details.
@@ -741,8 +746,12 @@ class AIGuardManager:
     def _ai_guard_data(self, data: dict):
         if self.debug:
             print(f"\nCalling AI Guard with Data: {formatted_json_str(data)}")
-            if self.service == "aidr" and self.aidr_config:
-                print(f"{DARK_YELLOW}AIDR Config Override: {formatted_json_str(self.aidr_config)}{RESET}")
+            if self.service == "aidr":
+                print(f"{DARK_YELLOW}base_url: {base_url}{RESET}")
+                print(f"{DARK_YELLOW}endpoint {self.endpoint}{RESET}")
+                if self.aidr_config:
+                    print(f"{DARK_YELLOW}AIDR Config Override: {formatted_json_str(self.aidr_config)}{RESET}")
+
 
         # Pass aidr_config to pangea_post_api
         response = pangea_post_api(
@@ -756,7 +765,7 @@ class AIGuardManager:
         # Handle response
         if response.status_code == 202:
             request_id = response.json()["request_id"]
-            status_code, response = poll_request(request_id, max_attempts=self.max_poll_attempts, verbose=self.verbose)
+            status_code, response = poll_request(request_id, max_attempts=self.max_poll_attempts, verbose=self.verbose, service=self.service)
 
         duration = get_duration(response, verbose=self.verbose)
 
@@ -785,11 +794,9 @@ class AIGuardManager:
         AIDR requires messages wrapped in an 'input' object and doesn't support overrides.
         """
         data = {
-            "input": {
+            "guard_input": {
                 "messages": messages
-            },
-            "recipe": recipe,
-            "debug": self.debug
+            }
         }
 
         if self.debug:

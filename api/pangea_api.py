@@ -7,11 +7,15 @@ import time
 import json
 import requests
 import getpass
+import urllib3
 from requests.models import Response
 from urllib.parse import urljoin
 from utils.colors import DARK_RED, DARK_YELLOW, DARK_BLUE, DARK_GREEN, RED, RESET
 from defaults import defaults
 from dotenv import load_dotenv
+
+# Disable urllib3 SSL warnings for corporate environments (Zscaler, etc.)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 load_dotenv(override=True)
 
@@ -27,7 +31,7 @@ read_timeout = defaults.read_timeout
 DEFAULT_AIDR_METADATA = {
     "event_type": "input",
     "app_id": "AIG-lab",
-    "actor_id": "test tool",
+    # "actor_id": "test tool",
     "llm_provider": "test",
     "model": "GPT-6-super",
     "model_version": "6s",
@@ -132,13 +136,16 @@ def pangea_get_api(endpoint, token=ai_guard_token, base_url=base_url):
         return create_error_response(400, f"Bad Request: {e}")
 
 
-def pangea_request(request_id, token=ai_guard_token, base_url=base_url):
+def pangea_request(request_id, token=ai_guard_token, base_url=base_url, service="aidr"):
     """Poll a specific request by ID."""
-    endpoint = f"/request/{request_id}"
+    if service == "aidr":
+        endpoint = f"{defaults.aidr_guard_poll_request_endpoint}/{request_id}"
+    else:
+        endpoint = f"/request/{request_id}"
     return pangea_get_api(endpoint, token=token, base_url=base_url)
 
 
-def poll_request(request_id, max_attempts=12, verbose=False, token=ai_guard_token, base_url=base_url):
+def poll_request(request_id, max_attempts=12, verbose=False, token=ai_guard_token, base_url=base_url, service="aidr"):
     """
     Poll status until 'Success' or non-202 result, or max attempts reached.
     """
@@ -148,7 +155,7 @@ def poll_request(request_id, max_attempts=12, verbose=False, token=ai_guard_toke
     if verbose:
         print(f"\nPolling for response using URL: {base_url}/request/{request_id}")
     while status_code == "Accepted":
-        response = pangea_request(request_id, token=token, base_url=base_url)
+        response = pangea_request(request_id, token=token, base_url=base_url, service=service)
         if response is None:
             if verbose:
                 print(f"\n{DARK_YELLOW}poll_request failed with no response.{RESET}")
