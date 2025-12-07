@@ -785,7 +785,7 @@ class AIGuardManager:
         AIDR requires messages wrapped in an 'input' object and doesn't support overrides.
         """
         data = {
-            "input": {
+            "guard_input": {
                 "messages": messages
             },
             "recipe": recipe,
