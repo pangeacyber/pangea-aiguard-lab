@@ -185,7 +185,7 @@ def main():
     )
     processing_group.add_argument(
         "--service",
-        default="aiguard",
+        default="aidr",
         choices=("aiguard", "aidr"),
         type=str,
         help=(
