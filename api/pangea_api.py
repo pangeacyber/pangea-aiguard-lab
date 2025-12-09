@@ -3,6 +3,7 @@
 # Author: Pangea Cyber Corporation
 
 import os
+import sys
 import time
 import json
 import requests
@@ -38,7 +39,7 @@ DEFAULT_AIDR_METADATA = {
     "source_ip": "74.244.51.54",
     "extra_info": {
         "actor_name": getpass.getuser(),  # Gets current username
-        "app_name": "AIGuard-lab"
+        "app_name": os.path.splitext(os.path.basename(sys.argv[0]))[0] if sys.argv else "aiguard_lab.py"
     }
 }
 
