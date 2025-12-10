@@ -12,6 +12,7 @@ import time
 
 from collections import Counter, defaultdict
 from typing import List, Dict, TypedDict, Optional
+from requests.models import Response
 # from pydantic import BaseModel, Field
 
 from testcase.testcase import TestCase, ExpectedDetectors
@@ -31,6 +32,14 @@ from utils.colors import (
     RESET,
 )
 from defaults import defaults
+
+
+class ErrorRequestResponse:
+    """Container for storing error request and response pairs."""
+    def __init__(self, request_id: str, request_data: dict, response: Response):
+        self.request_id = request_id  # Request ID from the API call
+        self.request_data = request_data  # JSON request data
+        self.response = response  # Response object
 
 
 class EfficacyTracker:
@@ -93,7 +102,7 @@ class EfficacyTracker:
 
         # Initialize error tracking
         # TODO: Modify AIGuardManager to track these here.
-        self.error_responses: list[Response] = []
+        self.error_responses: list[ErrorRequestResponse] = []
         self.errors: Counter = Counter()
         self.blocked = 0
 
@@ -744,26 +753,38 @@ class EfficacyTracker:
             return
         if self.verbose:
             print(f"\n--- {DARK_RED}Errors encountered during AI Guard calls:{RESET} --")
-            for error in self.error_responses:
+            for error_pair in self.error_responses:
                 try:
-                    formatted_json_error = json.dumps(error.json(), indent=4)
+                    print(f"{DARK_YELLOW}Request ID:{RESET} {error_pair.request_id}")
+                    print(f"{DARK_YELLOW}Request Data:{RESET}")
+                    formatted_json_request = json.dumps(error_pair.request_data, indent=4)
+                    print(f"{formatted_json_request}")
+                    print(f"{DARK_YELLOW}Response:{RESET}")
+                    formatted_json_error = json.dumps(error_pair.response.json(), indent=4)
                     print(f"{formatted_json_error}")
+                    print("-" * 50)
                 except Exception as e:
                     print(f"Error in print_errors: {e}")
-                    print(f"Error response: {error}")
+                    print(f"Error response: {error_pair}")
         # TODO: Make this happen as errors are added to the collection
         #       and flush to disk so callers can monitor errors in real-time.
         if self.args.summary_report_file:
             error_report_file = self.args.summary_report_file + ".errors.txt"
             with open(error_report_file, "w") as f:
                 f.write("\nErrors:\n")
-                for error in self.error_responses:
+                for error_pair in self.error_responses:
                     try:
-                        formatted_json_error = json.dumps(error.json(), indent=4)
+                        f.write(f"Request ID: {error_pair.request_id}\n")
+                        f.write("Request Data:\n")
+                        formatted_json_request = json.dumps(error_pair.request_data, indent=4)
+                        f.write(f"{formatted_json_request}\n")
+                        f.write("Response:\n")
+                        formatted_json_error = json.dumps(error_pair.response.json(), indent=4)
                         f.write(f"{formatted_json_error}\n")
+                        f.write("-" * 50 + "\n")
                     except Exception as e:
                         f.write(f"Error in print_errors: {e}\n")
-                        f.write(f"Error response: {error}\n")
+                        f.write(f"Error response: {error_pair}\n")
 
 
     def print_stats(self, enabled_detectors: List[str] = None):

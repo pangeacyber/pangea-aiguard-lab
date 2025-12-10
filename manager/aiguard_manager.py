@@ -23,7 +23,7 @@ from config.settings import Settings
 from config.overrides import Overrides
 from config.log_fields import LogFields
 from testcase.testcase import TestCase
-from .efficacy_tracker import EfficacyTracker
+from .efficacy_tracker import EfficacyTracker, ErrorRequestResponse
 from utils.utils import normalize_topics_and_detectors
         
 from api.pangea_api import pangea_post_api, poll_request, base_url
@@ -204,11 +204,12 @@ class AIGuardManager:
             print(f"{DARK_RED}Error parsing AIDR config JSON: {e}{RESET}")
             return None
 
-    def add_error_response(self, response):
+    def add_error_response(self, request_id, request, response):
         """ TODO: Allow error responses to be added to an output file and flushed to disk as they come in"""
         with self.efficacy._lock:
             self.efficacy.errors[response.status_code] += 1
-            self.efficacy.error_responses.append(response)
+            error_pair = ErrorRequestResponse(request_id=request_id, request_data=request, response=response)
+            self.efficacy.error_responses.append(error_pair)
 
     def add_duration(self, duration):
         with self.efficacy._lock:
@@ -762,9 +763,10 @@ class AIGuardManager:
             aidr_config=self.aidr_config if self.service == "aidr" else None
         )
 
+        # Initialize request_id as unavailable
+        request_id = response.json().get("request_id", "unavailable")
         # Handle response
         if response.status_code == 202:
-            request_id = response.json()["request_id"]
             status_code, response = poll_request(request_id, max_attempts=self.max_poll_attempts, verbose=self.verbose, service=self.service)
 
         duration = get_duration(response, verbose=self.verbose)
@@ -774,7 +776,7 @@ class AIGuardManager:
             self.add_duration(duration)
 
         if response is not None and response.status_code != 200:
-            self.add_error_response(response)
+            self.add_error_response(request_id, data, response)
 
         return response
 
@@ -1165,7 +1167,19 @@ class AIGuardTests:
                         aig.report_call_results(test, test.messages, response)
                 except Exception as e:
                     print(f"\n{DARK_RED}Error processing prompt {index + 1}/{total_rows}: {e}{RESET}")
-                    aig.add_error_response(e)
+                    # Create a mock response for the exception case
+                    from types import SimpleNamespace
+                    mock_response = SimpleNamespace()
+                    mock_response.status_code = 500  # Internal Server Error
+                    mock_response.json = lambda: {"error": str(e), "type": "exception"}
+                    mock_response.text = str(e)
+                    # Extract request data from test object
+                    request_data = {
+                        "messages": test.messages,
+                        "index": getattr(test, 'index', None),
+                        "label": getattr(test, 'label', None)
+                    }
+                    aig.add_error_response("unavailable", request_data, mock_response)
 
         def process_prompts():
             print(f"\nProcessing {len(self.tests)} prompts with {max_workers} workers")
